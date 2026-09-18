@@ -1,11 +1,12 @@
 # ---- Build stage ----
-FROM --platform=$BUILDPLATFORM node:22-alpine AS build
+FROM --platform=$BUILDPLATFORM node:24-alpine AS build
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
+ENV VITE_TASK_BACKEND=flyreq
 ENV VITE_DEFAULT_API_URL=__VITE_DEFAULT_API_URL_PLACEHOLDER__
 ENV VITE_API_PROXY_AVAILABLE=__VITE_API_PROXY_AVAILABLE_PLACEHOLDER__
 ENV VITE_API_PROXY_LOCKED=__VITE_API_PROXY_LOCKED_PLACEHOLDER__
@@ -17,8 +18,27 @@ ENV VITE_PROMO_API_LABEL=__VITE_PROMO_API_LABEL_PLACEHOLDER__
 COPY . .
 RUN npm run build
 
-# ---- Production stage ----
-FROM nginx:alpine
+# ---- Persistent FlyReq task backend ----
+FROM node:24-alpine AS backend
+
+WORKDIR /app/backend
+RUN apk add --no-cache python3 make g++
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci --omit=dev && apk del python3 make g++
+COPY package.json /app/package.json
+COPY backend/*.js backend/*.json backend/LICENSE ./
+ENV AIPIC_HOST=0.0.0.0
+ENV PORT=8788
+ENV FLYREQ_TASK_DB=/data/tasks.sqlite
+ENV FLYREQ_IMAGE_DIR=/data/images
+ENV FLYREQ_VIDEO_DIR=/data/videos
+ENV FLYREQ_LOG_DIR=/data/logs
+VOLUME ["/data"]
+EXPOSE 8788
+CMD ["node", "server.js"]
+
+# ---- Frontend and same-origin gateway ----
+FROM nginx:alpine AS frontend
 
 ENV HOST=0.0.0.0
 ENV PORT=80

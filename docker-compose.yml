@@ -3,9 +3,12 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
+      target: frontend
     image: aipic:local
     container_name: aipic
     restart: unless-stopped
+    depends_on:
+      - backend
     ports:
       - "${AIPIC_PORT:-8080}:80"
     environment:
@@ -20,3 +23,26 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: backend
+    image: aipic-backend:local
+    restart: unless-stopped
+    environment:
+      AIPIC_HOST: "0.0.0.0"
+      PORT: "8788"
+      FLYREQ_TASK_DB: /data/tasks.sqlite
+      FLYREQ_IMAGE_DIR: /data/images
+      FLYREQ_VIDEO_DIR: /data/videos
+      FLYREQ_LOG_DIR: /data/logs
+      FLYREQ_TASK_CONCURRENCY: "${FLYREQ_TASK_CONCURRENCY:-4}"
+    volumes:
+      - aipic-data:/data
+    expose:
+      - "8788"
+
+volumes:
+  aipic-data:

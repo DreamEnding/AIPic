@@ -1,0 +1,28 @@
+{
+  "name": "aipic-flyreq-backend",
+  "version": "1.5.1",
+  "private": true,
+  "description": "AIPic image task backend adapted from FlyReq Image Studio 1.5.1",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.5.0",
+    "busboy": "^1.6.0",
+    "sharp": "^0.34.5",
+    "undici": "^8.2.0",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.5.0",
+    "globals": "^17.6.0"
+  },
+  "type": "commonjs",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

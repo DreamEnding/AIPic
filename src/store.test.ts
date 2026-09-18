@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { strToU8, zipSync } from 'fflate'
 import { DEFAULT_PARAMS } from './types'
 import { createDefaultFalProfile, createDefaultOpenAIProfile, DEFAULT_RESPONSES_MODEL, DEFAULT_SETTINGS, normalizeSettings } from './lib/apiProfiles'
@@ -97,6 +97,8 @@ vi.mock('./lib/agentApi', () => ({
 }))
 import { clearAgentConversations, clearImages, getAllAgentConversations, getAllTasks, putAgentConversation, putImage, putTask as putDbTask } from './lib/db'
 import { callAgentResponsesApi, callBatchImageSingle } from './lib/agentApi'
+import { callImageApi } from './lib/api'
+import * as imageDb from './lib/db'
 import { cleanStaleAgentInputDrafts, deleteAgentRoundFromConversation, editOutputs, getActiveAgentRounds, getErrorToastMessage, getPersistedState, getTaskApiProfile, importData, initStore, markInterruptedOpenAIRunningTasks, migratePersistedState, regenerateAgentAssistantMessage, remapAgentRoundMentionsForPathChange, removeTask, reuseConfig, submitAgentMessage, submitTask, useStore } from './store'
 
 const imageA = { id: 'image-a', dataUrl: 'data:image/png;base64,a' }
@@ -247,6 +249,64 @@ describe('mask draft lifecycle in store actions', () => {
     const state = useStore.getState()
     expect(state.inputImages.map((img) => img.id)).toEqual([replacement.id, imageB.id])
     expect(state.prompt).toBe(prompt)
+  })
+})
+
+describe('gallery generation timeout lifecycle', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    const profile = createDefaultOpenAIProfile({ apiKey: 'test-key', timeout: 600 })
+    useStore.setState({
+      settings: normalizeSettings({ profiles: [profile], activeProfileId: profile.id }),
+      prompt: 'Generate a 4K image',
+      params: { ...DEFAULT_PARAMS, size: '3840x2160' },
+      inputImages: [],
+      maskDraft: null,
+      tasks: [],
+      reusedTaskApiProfileId: null,
+      reusedTaskApiProfileMissing: false,
+      showToast: vi.fn(),
+    })
+  })
+
+  afterEach(async () => {
+    vi.restoreAllMocks()
+    vi.mocked(callImageApi).mockReset().mockResolvedValue({ images: [] })
+    await imageDb.clearImages()
+    await imageDb.clearTasks()
+    useStore.setState({ tasks: [] })
+    vi.useRealTimers()
+  })
+
+  it('persists a 4K result after the old task-wide deadline passes', async () => {
+    let complete!: (result: Awaited<ReturnType<typeof callImageApi>>) => void
+    vi.mocked(callImageApi).mockImplementationOnce(() => new Promise((resolve) => { complete = resolve }))
+    await submitTask()
+
+    await vi.advanceTimersByTimeAsync(610_000)
+    expect(useStore.getState().tasks[0].status).toBe('running')
+
+    complete({ images: ['data:image/png;base64,aW1hZ2U='] })
+    await vi.advanceTimersByTimeAsync(0)
+    const completed = useStore.getState().tasks[0]
+    expect(completed.status).toBe('done')
+    expect(completed.outputImages).toHaveLength(1)
+    expect(await imageDb.getImage(completed.outputImages[0])).toMatchObject({ dataUrl: 'data:image/png;base64,aW1hZ2U=' })
+  })
+
+  it('does not turn a generated image into an error while IndexedDB is saving it', async () => {
+    let finishSaving!: (id: string) => void
+    vi.mocked(callImageApi).mockResolvedValueOnce({ images: ['data:image/png;base64,aW1hZ2U='] })
+    const save = vi.spyOn(imageDb, 'storeImage').mockImplementationOnce(() => new Promise((resolve) => { finishSaving = resolve }))
+    await submitTask()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(save).toHaveBeenCalledWith('data:image/png;base64,aW1hZ2U=', 'generated')
+
+    await vi.advanceTimersByTimeAsync(610_000)
+    expect(useStore.getState().tasks[0].status).toBe('running')
+    finishSaving('slow-saved-image')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(useStore.getState().tasks[0]).toMatchObject({ status: 'done', outputImages: ['slow-saved-image'] })
   })
 })
 

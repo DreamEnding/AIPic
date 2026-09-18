@@ -947,7 +947,7 @@ describe('callImageApi', () => {
           poll: {
             path: 'images/tasks/{task_id}',
             method: 'GET',
-            intervalSeconds: 5,
+            intervalSeconds: 15,
             statusPath: 'data.status',
             successValues: ['SUCCESS'],
             failureValues: ['FAILURE'],
@@ -963,17 +963,17 @@ describe('callImageApi', () => {
           baseUrl: 'https://api.example.com/v1',
           apiKey: 'test-key',
           model: 'model',
-          timeout: 1,
+          timeout: 10,
         }],
         activeProfileId: 'profile-custom',
-        timeout: 1,
+        timeout: 10,
       },
       prompt: 'prompt',
       params: { ...DEFAULT_PARAMS },
       inputImageDataUrls: [],
     })
 
-    await vi.advanceTimersByTimeAsync(6000)
+    await vi.advanceTimersByTimeAsync(16_000)
 
     await expect(promise).resolves.toEqual({
       images: ['data:image/png;base64,aW1hZ2U='],

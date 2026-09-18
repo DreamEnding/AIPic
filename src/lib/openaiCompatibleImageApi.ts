@@ -18,6 +18,10 @@ import {
   pickActualParams,
 } from './imageApiShared'
 
+import { getImageRequestTimeoutSeconds } from './imageRequestTimeout'
+import { runImageRequest } from './imageRequest'
+import { fetchImageResponse } from './imageProxyTransport'
+
 const PROMPT_REWRITE_GUARD_PREFIX = 'Use the following text as the complete prompt. Do not rewrite it:'
 
 function getStreamPartialImages(profile: ApiProfile): number {
@@ -156,16 +160,23 @@ function parseServerSentEventBlock(block: string): string | null {
   return data
 }
 
-async function readJsonServerSentEvents(response: Response, onEvent: (event: Record<string, unknown>) => void | Promise<void>): Promise<void> {
+async function readJsonServerSentEvents(
+  response: Response,
+  onEvent: (event: Record<string, unknown>) => void | boolean | Promise<void | boolean>,
+  signal?: AbortSignal,
+): Promise<void> {
   if (!response.body) throw new Error('接口未返回可读取的流式响应')
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  const abort = () => { void reader.cancel(signal?.reason).catch(() => {}) }
+  signal?.addEventListener('abort', abort, { once: true })
 
-  const processBlock = async (block: string) => {
+  const processBlock = async (block: string): Promise<boolean> => {
+    if (block.split(/\r?\n/).some((line) => /^data:\s*\[DONE\]\s*$/.test(line))) return true
     const data = parseServerSentEventBlock(block)
-    if (!data) return
+    if (!data) return false
 
     let event: unknown
     try {
@@ -173,31 +184,37 @@ async function readJsonServerSentEvents(response: Response, onEvent: (event: Rec
     } catch {
       throw new Error('流式响应包含无法解析的 JSON 事件')
     }
-    if (!isRecordValue(event)) return
+    if (!isRecordValue(event)) return false
 
     const errorMessage = getStreamEventErrorMessage(event)
     if (errorMessage) throw new Error(errorMessage)
-
-    await onEvent(event)
+    return (await onEvent(event)) === true
   }
 
-  while (true) {
-    const { value, done } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
+  try {
+    while (true) {
+      signal?.throwIfAborted()
+      const { value, done } = await reader.read()
+      signal?.throwIfAborted()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
 
-    let separatorIndex = buffer.search(/\r?\n\r?\n/)
-    while (separatorIndex >= 0) {
-      const block = buffer.slice(0, separatorIndex)
-      const separator = buffer.match(/\r?\n\r?\n/)?.[0] ?? '\n\n'
-      buffer = buffer.slice(separatorIndex + separator.length)
-      await processBlock(block)
-      separatorIndex = buffer.search(/\r?\n\r?\n/)
+      let separatorIndex = buffer.search(/\r?\n\r?\n/)
+      while (separatorIndex >= 0) {
+        const block = buffer.slice(0, separatorIndex)
+        const separator = buffer.match(/\r?\n\r?\n/)?.[0] ?? '\n\n'
+        buffer = buffer.slice(separatorIndex + separator.length)
+        if (await processBlock(block)) return
+        separatorIndex = buffer.search(/\r?\n\r?\n/)
+      }
     }
+    buffer += decoder.decode()
+    if (buffer.trim()) await processBlock(buffer)
+  } finally {
+    signal?.removeEventListener('abort', abort)
+    void reader.cancel().catch(() => {})
+    reader.releaseLock()
   }
-
-  buffer += decoder.decode()
-  if (buffer.trim()) await processBlock(buffer)
 }
 
 function createResponsesImageTool(
@@ -333,7 +350,14 @@ async function parseImagesApiResponse(payload: ImageApiResponse, mime: string, s
   const images: string[] = []
   const rawImageUrls = data.map((item) => getImageUrlValue(item)).filter(isHttpUrl)
   const revisedPrompts: Array<string | undefined> = []
+  const preserveResultUrlsOnAbort = () => {
+    if (rawImageUrls.length && signal?.reason instanceof Error) {
+      Object.assign(signal.reason, { rawImageUrls })
+    }
+  }
+  signal?.addEventListener('abort', preserveResultUrlsOnAbort, { once: true })
   try {
+    signal?.throwIfAborted()
     for (const item of data) {
       const b64 = getImageBase64Value(item)
       if (b64) {
@@ -353,6 +377,8 @@ async function parseImagesApiResponse(payload: ImageApiResponse, mime: string, s
       (err as any).rawImageUrls = rawImageUrls
     }
     throw err
+  } finally {
+    signal?.removeEventListener('abort', preserveResultUrlsOnAbort)
   }
 
   if (!images.length) {
@@ -389,6 +415,8 @@ async function parseImagesApiStreamResponse(
   response: Response,
   mime: string,
   onPartialImage?: CallApiOptions['onPartialImage'],
+  signal?: AbortSignal,
+  expectedImages = 1,
 ): Promise<CallApiResult> {
   const completedItems: ImageResponseItem[] = []
   let resultPayload: ImageApiResponse | null = null
@@ -409,16 +437,17 @@ async function parseImagesApiStreamResponse(
 
     if (object === 'image.generation.result' || object === 'image.edit.result') {
       resultPayload = normalizeImageApiPayload(event)
-      return
+      return true
     }
 
     if (type === 'image_generation.completed' || type === 'image_edit.completed') {
       completedItems.push(eventToImageResponseItem(event))
+      return completedItems.length >= expectedImages
     }
-  })
+  }, signal)
 
   if (resultPayload) {
-    return parseImagesApiResponse(resultPayload, mime)
+    return parseImagesApiResponse(resultPayload, mime, signal)
   }
 
   if (!completedItems.length) {
@@ -460,6 +489,7 @@ async function parseResponsesApiStreamResponse(
   response: Response,
   mime: string,
   onPartialImage?: CallApiOptions['onPartialImage'],
+  signal?: AbortSignal,
 ): Promise<CallApiResult> {
   let completedPayload: ResponsesApiResponse | null = null
   const outputItems: ResponsesOutputItem[] = []
@@ -485,8 +515,11 @@ async function parseResponsesApiStreamResponse(
       return
     }
 
-    completedPayload = payload
-  })
+    if (type === 'response.completed') {
+      completedPayload = payload
+      return true
+    }
+  }, signal)
 
   const payload = completedPayload ?? (outputItems.length ? { output: outputItems } : null)
   if (!payload) throw new Error('流式接口未返回最终图片数据')
@@ -583,10 +616,8 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
   const requestHeaders = createProxiedRequestHeaders(profile, useApiProxy)
   const paths = createOpenAICompatiblePaths(customProvider)
 
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), profile.timeout * 1000)
-
-  try {
+  const timeoutSeconds = getImageRequestTimeoutSeconds(profile, params)
+  return runImageRequest(timeoutSeconds, async (signal) => {
     let response: Response
 
     if (isEdit) {
@@ -643,13 +674,13 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
         formData.append('mask', maskBlob, 'mask.png')
       }
 
-      response = await fetch(buildApiUrl(profile.baseUrl, paths.editPath, proxyConfig, useApiProxy), {
+      response = await fetchImageResponse(buildApiUrl(profile.baseUrl, paths.editPath, proxyConfig, useApiProxy), {
         method: 'POST',
         headers: requestHeaders,
         cache: 'no-store',
         body: formData,
-        signal: controller.signal,
-      })
+        signal,
+      }, useApiProxy, timeoutSeconds)
     } else {
       const body: Record<string, unknown> = {
         model: profile.model,
@@ -677,7 +708,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
         body.partial_images = getStreamPartialImages(profile)
       }
 
-      response = await fetch(buildApiUrl(profile.baseUrl, paths.generationPath, proxyConfig, useApiProxy), {
+      response = await fetchImageResponse(buildApiUrl(profile.baseUrl, paths.generationPath, proxyConfig, useApiProxy), {
         method: 'POST',
         headers: {
           ...requestHeaders,
@@ -685,22 +716,20 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
         },
         cache: 'no-store',
         body: JSON.stringify(body),
-        signal: controller.signal,
-      })
+        signal,
+      }, useApiProxy, timeoutSeconds)
     }
 
     if (!response.ok) {
       throw await createApiResponseError(response)
     }
 
-    if (profile.streamImages && isEventStreamResponse(response)) {
-      return parseImagesApiStreamResponse(response, mime, opts.onPartialImage)
+    if (isEventStreamResponse(response)) {
+      return parseImagesApiStreamResponse(response, mime, opts.onPartialImage, signal, Math.max(1, params.n))
     }
 
-    return parseImagesApiResponse(await readJsonResponse(response, 'Images API') as ImageApiResponse, mime, controller.signal)
-  } finally {
-    clearTimeout(timeoutId)
-  }
+    return parseImagesApiResponse(await readJsonResponse(response, 'Images API') as ImageApiResponse, mime, signal)
+  })
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -992,7 +1021,7 @@ async function callCustomHttpImageApi(opts: CallApiOptions, profile: ApiProfile,
       ;(err as any).rawResponsePayload = JSON.stringify(submitPayload, null, 2)
       throw err
     }
-    if (!taskId) return extractCustomImages(submitPayload, submitMapping.result ?? {}, mime, controller.signal)
+    if (!taskId) return await extractCustomImages(submitPayload, submitMapping.result ?? {}, mime, controller.signal)
     if (!customProvider.poll) throw new Error('异步接口返回了 task_id，但服务商配置缺少 poll')
     opts.onCustomTaskEnqueued?.({ taskId })
     if (timeoutId) {
@@ -1051,10 +1080,8 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
   const proxyConfig = readClientDevProxyConfig()
   const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
   const requestHeaders = createProxiedRequestHeaders(profile, useApiProxy)
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), profile.timeout * 1000)
-
-  try {
+  const timeoutSeconds = getImageRequestTimeoutSeconds(profile, params)
+  return runImageRequest(timeoutSeconds, async (signal) => {
     if (opts.maskDataUrl) {
       assertMaskEditFileSize('遮罩主图文件', getDataUrlDecodedByteSize(inputImageDataUrls[0] ?? ''))
       assertMaskEditFileSize('遮罩文件', getDataUrlDecodedByteSize(opts.maskDataUrl))
@@ -1074,7 +1101,7 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
       body.stream = true
     }
 
-    const response = await fetch(buildApiUrl(profile.baseUrl, 'responses', proxyConfig, useApiProxy), {
+    const response = await fetchImageResponse(buildApiUrl(profile.baseUrl, 'responses', proxyConfig, useApiProxy), {
       method: 'POST',
       headers: {
         ...requestHeaders,
@@ -1082,15 +1109,15 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
       },
       cache: 'no-store',
       body: JSON.stringify(body),
-      signal: controller.signal,
-    })
+      signal,
+    }, useApiProxy, timeoutSeconds)
 
     if (!response.ok) {
       throw await createApiResponseError(response)
     }
 
-    if (profile.streamImages && isEventStreamResponse(response)) {
-      return parseResponsesApiStreamResponse(response, mime, opts.onPartialImage)
+    if (isEventStreamResponse(response)) {
+      return parseResponsesApiStreamResponse(response, mime, opts.onPartialImage, signal)
     }
 
     const payload = await readJsonResponse(response, 'Responses API') as ResponsesApiResponse
@@ -1106,7 +1133,5 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
       ),
       revisedPrompts: imageResults.map((result) => result.revisedPrompt),
     }
-  } finally {
-    clearTimeout(timeoutId)
-  }
+  })
 }

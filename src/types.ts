@@ -168,6 +168,12 @@ export interface TaskRecord {
   customTaskId?: string
   /** 自定义异步任务是否等待自动恢复 */
   customRecoverable?: boolean
+  /** 本地 flyreq 后端任务 ID，刷新页面后只继续查询，不重新生图 */
+  backendTaskId?: string
+  /** 与本地后端断开时，等待恢复查询现有任务 */
+  backendRecoverable?: boolean
+  /** 后端返回的部分成功提示 */
+  backendWarning?: string
   /** API 返回的实际生效参数，用于标记与请求值不一致的情况 */
   actualParams?: Partial<TaskParams>
   /** 输出图片对应的实际生效参数，key 为 outputImages 中的图片 id */

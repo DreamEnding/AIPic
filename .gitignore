@@ -4,3 +4,12 @@ dev-proxy.config.json
 .wrangler/
 ._*
 **/._*
+.gstack/
+.env.local
+.env.*.local
+backend/.env
+backend/*.sqlite*
+backend/flyreq-images/
+backend/flyreq-videos/
+backend/logs/
+backend/data/

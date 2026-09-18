@@ -11,3 +11,10 @@ coverage
 .DS_Store
 ._*
 **/._*
+backend/node_modules
+backend/*.sqlite*
+backend/flyreq-images
+backend/flyreq-videos
+backend/logs
+backend/data
+.gstack

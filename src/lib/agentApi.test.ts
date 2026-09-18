@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PARAMS } from '../types'
 import { createDefaultOpenAIProfile, DEFAULT_SETTINGS } from './apiProfiles'
-import { callAgentConversationTitleApi, callAgentResponsesApi } from './agentApi'
+import { callAgentConversationTitleApi, callAgentResponsesApi, callBatchImageSingle } from './agentApi'
+import { getImageRequestTimeoutSeconds } from './imageRequestTimeout'
 
 describe('callAgentResponsesApi', () => {
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -145,6 +147,164 @@ describe('callAgentResponsesApi', () => {
     })).rejects.toMatchObject({ name: 'AbortError' })
 
     expect(textDeltas).toEqual(['Hel'])
+  })
+
+  it('finishes on response.completed even when the upstream connection stays open', async () => {
+    const cancel = vi.fn()
+    const response = new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+          type: 'response.completed',
+          response: {
+            id: 'resp_complete',
+            output: [{ type: 'image_generation_call', id: 'ig_complete', result: 'ZmluYWw=' }],
+          },
+        })}\n\n`))
+      },
+      cancel,
+    }), { headers: { 'Content-Type': 'text/event-stream' } })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response)
+
+    const result = await callAgentResponsesApi({
+      settings: DEFAULT_SETTINGS,
+      profile: createDefaultOpenAIProfile({ apiKey: 'test-key', streamImages: true }),
+      params: DEFAULT_PARAMS,
+      input: 'prompt',
+    })
+
+    expect(result.images).toHaveLength(1)
+    expect(result.responseId).toBe('resp_complete')
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(response.body?.locked).toBe(false)
+  })
+
+  it('preserves every completed image until DONE without using response.created as the final payload', async () => {
+    const cancel = vi.fn()
+    const response = new Response(new ReadableStream({
+      start(controller) {
+        const events = [
+          { type: 'response.created', response: { id: 'resp_multi', output: [] } },
+          { type: 'response.output_item.done', item: { type: 'image_generation_call', id: 'ig_1', result: 'b25l' } },
+          { type: 'response.output_item.done', item: { type: 'image_generation_call', id: 'ig_2', result: 'dHdv' } },
+        ]
+        controller.enqueue(new TextEncoder().encode(`${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')}data: [DONE]\n\n`))
+      },
+      cancel,
+    }), { headers: { 'Content-Type': 'text/event-stream' } })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response)
+    const onImageToolCompleted = vi.fn()
+
+    const result = await callAgentResponsesApi({
+      settings: DEFAULT_SETTINGS,
+      profile: createDefaultOpenAIProfile({ apiKey: 'test-key', streamImages: true }),
+      params: DEFAULT_PARAMS,
+      input: 'prompt',
+      onImageToolCompleted,
+    })
+
+    expect(result.images.map((image) => image.toolCallId)).toEqual(['ig_1', 'ig_2'])
+    expect(onImageToolCompleted).toHaveBeenCalledTimes(2)
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(response.body?.locked).toBe(false)
+  })
+
+  it('keeps the deadline active after headers and streamed text arrive', async () => {
+    vi.useFakeTimers()
+    const cancel = vi.fn()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_text.delta","delta":"Working"}\n\n'))
+      },
+      cancel,
+    }), { headers: { 'Content-Type': 'text/event-stream' } }))
+    const profile = createDefaultOpenAIProfile({ apiKey: 'test-key', streamImages: true, timeout: 1 })
+    const timeoutSeconds = getImageRequestTimeoutSeconds(profile, DEFAULT_PARAMS)
+    const onTextDelta = vi.fn()
+    const result = callAgentResponsesApi({
+      settings: DEFAULT_SETTINGS,
+      profile,
+      params: DEFAULT_PARAMS,
+      input: 'prompt',
+      onTextDelta,
+    })
+    const assertion = expect(result).rejects.toThrow(`请求超时：超过 ${timeoutSeconds} 秒仍未完成`)
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onTextDelta).toHaveBeenCalledWith('Working')
+    await vi.advanceTimersByTimeAsync(timeoutSeconds * 1000)
+    await assertion
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(globalThis.fetch).toHaveBeenCalledOnce()
+  })
+
+  it('rejects promptly when the caller aborts during a stalled JSON body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"output":['))
+      },
+    }), { headers: { 'Content-Type': 'application/json' } }))
+    const controller = new AbortController()
+    const result = callAgentResponsesApi({
+      settings: DEFAULT_SETTINGS,
+      profile: createDefaultOpenAIProfile({ apiKey: 'test-key' }),
+      params: DEFAULT_PARAMS,
+      input: 'prompt',
+      signal: controller.signal,
+    })
+    const assertion = expect(result).rejects.toMatchObject({ name: 'AbortError' })
+
+    await Promise.resolve()
+    await Promise.resolve()
+    controller.abort()
+    await assertion
+    expect(globalThis.fetch).toHaveBeenCalledOnce()
+  })
+
+  it('reports a batch deadline as a timeout rather than caller cancellation', async () => {
+    vi.useFakeTimers()
+    const cancel = vi.fn()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream({ cancel }), {
+      headers: { 'Content-Type': 'text/event-stream' },
+    }))
+    const profile = createDefaultOpenAIProfile({ apiKey: 'test-key', streamImages: true, timeout: 1 })
+    const timeoutSeconds = getImageRequestTimeoutSeconds(profile, DEFAULT_PARAMS)
+    const result = callBatchImageSingle({
+      profile,
+      params: DEFAULT_PARAMS,
+      batchItemId: 'batch_timeout',
+      prompt: 'prompt',
+      referenceImageDataUrls: [],
+    })
+
+    await vi.advanceTimersByTimeAsync(timeoutSeconds * 1000)
+    expect(await result).toMatchObject({
+      batchItemId: 'batch_timeout',
+      image: null,
+      error: `请求超时：超过 ${timeoutSeconds} 秒仍未完成。上游可能仍在生成，请确认结果后再重试。`,
+    })
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(globalThis.fetch).toHaveBeenCalledOnce()
+  })
+
+  it('still identifies explicit batch cancellation during a stalled body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream(), {
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    const controller = new AbortController()
+    const result = callBatchImageSingle({
+      profile: createDefaultOpenAIProfile({ apiKey: 'test-key' }),
+      params: DEFAULT_PARAMS,
+      batchItemId: 'batch_cancel',
+      prompt: 'prompt',
+      referenceImageDataUrls: [],
+      signal: controller.signal,
+    })
+
+    await Promise.resolve()
+    await Promise.resolve()
+    controller.abort()
+    expect(await result).toMatchObject({ image: null, error: '请求已取消' })
+    expect(globalThis.fetch).toHaveBeenCalledOnce()
   })
 
   it('generates a short conversation title without image tools', async () => {

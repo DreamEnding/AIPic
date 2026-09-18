@@ -10,7 +10,11 @@
     "deploy:cf": "npm run build && wrangler deploy",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "backend:install": "npm install --prefix backend",
+    "build:backend": "VITE_TASK_BACKEND=flyreq npm run build",
+    "start": "node backend/server.js",
+    "dev:backend": "VITE_TASK_BACKEND=flyreq vite"
   },
   "dependencies": {
     "@fal-ai/client": "^1.10.0",

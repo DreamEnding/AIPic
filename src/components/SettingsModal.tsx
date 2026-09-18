@@ -26,6 +26,7 @@ import {
   switchApiProfileProvider,
 } from '../lib/apiProfiles'
 import { copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
+import { MAX_IMAGE_TIMEOUT_SECONDS, normalizeImageTimeoutSeconds } from '../lib/imageRequestTimeout'
 import { DEFAULT_AGENT_MAX_TOOL_ROUNDS, DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type AppSettings, type CustomProviderDefinition } from '../types'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
@@ -515,7 +516,7 @@ export default function SettingsModal() {
         name: profile.name.trim() || (profile.id === DEFAULT_OPENAI_PROFILE_ID ? '默认' : '新配置'),
         baseUrl: normalizedBaseUrl,
         model: profile.model.trim() || defaultModel,
-        timeout: Number(profile.timeout) || DEFAULT_SETTINGS.timeout,
+        timeout: normalizeImageTimeoutSeconds(Number(profile.timeout)),
         apiProxy: nextApiProxy,
         codexCli: profile.provider === 'openai' ? profile.codexCli : false,
         streamImages: profile.provider === 'openai' ? profile.streamImages : false,
@@ -635,10 +636,7 @@ export default function SettingsModal() {
 
   const handleClose = () => {
     const nextTimeout = Number(timeoutInput)
-    const normalizedTimeout =
-      timeoutInput.trim() === '' || Number.isNaN(nextTimeout)
-        ? DEFAULT_SETTINGS.timeout
-        : nextTimeout
+    const normalizedTimeout = normalizeImageTimeoutSeconds(nextTimeout)
     const normalizedAgentMaxToolRounds = agentMaxToolRoundsInput.trim() === ''
       ? DEFAULT_AGENT_MAX_TOOL_ROUNDS
       : normalizeAgentMaxToolRounds(agentMaxToolRoundsInput, draft.agentMaxToolRounds)
@@ -659,8 +657,9 @@ export default function SettingsModal() {
   const commitTimeout = useCallback(() => {
     if (!isOpenAICompatibleProvider(draft, activeProfile.provider)) return
     const nextTimeout = Number(timeoutInput)
-    const normalizedTimeout =
-      timeoutInput.trim() === '' ? DEFAULT_SETTINGS.timeout : Number.isNaN(nextTimeout) ? activeProfile.timeout : nextTimeout
+    const normalizedTimeout = normalizeImageTimeoutSeconds(
+      nextTimeout, timeoutInput.trim() === '' ? DEFAULT_SETTINGS.timeout : activeProfile.timeout,
+    )
     setTimeoutInput(String(normalizedTimeout))
     updateActiveProfile({ timeout: normalizedTimeout }, true)
   }, [draft, activeProfile.id, activeProfile.provider, activeProfile.timeout, timeoutInput])
@@ -1710,9 +1709,12 @@ export default function SettingsModal() {
                             onBlur={commitTimeout}
                             type="number"
                             min={10}
-                            max={600}
+                            max={MAX_IMAGE_TIMEOUT_SECONDS}
                             className="w-full rounded-xl border border-gray-200/80 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-white/[0.1] dark:bg-white/[0.06] dark:text-gray-100 dark:focus:border-blue-400/60 dark:focus:ring-blue-500/20"
                           />
+                          <span className="mt-1.5 block text-xs text-gray-500 dark:text-gray-500">
+                            默认 30 分钟，最多 60 分钟；GPT / Grok 的 4K 任务至少等待 30 分钟。上游网关仍可能提前中断。
+                          </span>
                         </label>
                       )}
 

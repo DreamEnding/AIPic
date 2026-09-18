@@ -16,6 +16,7 @@ import type {
 import { DEFAULT_AGENT_MAX_TOOL_ROUNDS, DEFAULT_STREAM_PARTIAL_IMAGES } from '../types'
 import { isApiProxyAvailable, shouldUseApiProxy } from './devProxy'
 import { readRuntimeEnv } from './runtimeEnv'
+import { DEFAULT_IMAGE_TIMEOUT_SECONDS, normalizeImageTimeoutSeconds } from './imageRequestTimeout'
 import { isImportableConfigUrl } from './customProviderConfigUrl'
 
 const LEGACY_OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
@@ -33,7 +34,7 @@ export const DEFAULT_RESPONSES_MODEL = 'gpt-5.5'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
 export const DEFAULT_FAL_MODEL = 'openai/gpt-image-2'
 export const DEFAULT_OPENAI_PROFILE_ID = 'default-openai'
-export const DEFAULT_API_TIMEOUT = 600
+export const DEFAULT_API_TIMEOUT = DEFAULT_IMAGE_TIMEOUT_SECONDS
 
 const BUILT_IN_PROVIDER_IDS = new Set<ApiProvider>(['openai', 'fal'])
 const LEGACY_DEFAULT_BASE_URLS = new Set([LEGACY_OPENAI_DEFAULT_BASE_URL])
@@ -455,7 +456,7 @@ export function normalizeApiProfile(input: unknown, fallback?: Partial<ApiProfil
     baseUrl: provider === 'fal' ? baseUrl.trim().replace(/\/+$/, '') || DEFAULT_FAL_BASE_URL : baseUrl,
     apiKey: typeof record.apiKey === 'string' ? record.apiKey : defaults.apiKey,
     model: typeof record.model === 'string' && record.model.trim() ? record.model : defaults.model,
-    timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : defaults.timeout,
+    timeout: normalizeImageTimeoutSeconds(record.timeout, defaults.timeout),
     apiMode,
     codexCli: Boolean(record.codexCli),
     apiProxy: typeof record.apiProxy === 'boolean' ? record.apiProxy : defaults.apiProxy,
@@ -487,7 +488,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     baseUrl: normalizeMigratedBaseUrl(typeof record.baseUrl === 'string' ? record.baseUrl : DEFAULT_BASE_URL) ?? DEFAULT_BASE_URL,
     apiKey: typeof record.apiKey === 'string' ? record.apiKey : '',
     model: typeof record.model === 'string' && record.model.trim() ? record.model : DEFAULT_IMAGES_MODEL,
-    timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : DEFAULT_API_TIMEOUT,
+    timeout: normalizeImageTimeoutSeconds(record.timeout),
     apiMode: record.apiMode === 'responses' ? 'responses' : 'images',
     codexCli: Boolean(record.codexCli),
     apiProxy: typeof record.apiProxy === 'boolean' ? record.apiProxy : DEFAULT_OPENAI_API_PROXY,
@@ -614,7 +615,7 @@ export function getActiveApiProfile(settings: Partial<AppSettings> | unknown): A
     baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : profile.baseUrl,
     apiKey: typeof record.apiKey === 'string' ? record.apiKey : profile.apiKey,
     model: typeof record.model === 'string' && record.model.trim() ? record.model : profile.model,
-    timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : profile.timeout,
+    timeout: normalizeImageTimeoutSeconds(record.timeout, profile.timeout),
     apiMode: record.apiMode === 'images' || record.apiMode === 'responses' ? record.apiMode : profile.apiMode,
     codexCli: typeof record.codexCli === 'boolean' ? record.codexCli : profile.codexCli,
     apiProxy: typeof record.apiProxy === 'boolean' ? record.apiProxy : profile.apiProxy,
