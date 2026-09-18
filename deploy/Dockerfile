@@ -1,59 +1,59 @@
-# ---- Build stage ----
+# Build the browser application on the builder's native architecture.
 FROM --platform=$BUILDPLATFORM node:24-alpine AS build
-
 WORKDIR /app
-
 COPY package.json package-lock.json ./
 RUN npm ci
 
-ENV VITE_TASK_BACKEND=flyreq
-ENV VITE_DEFAULT_API_URL=__VITE_DEFAULT_API_URL_PLACEHOLDER__
-ENV VITE_API_PROXY_AVAILABLE=__VITE_API_PROXY_AVAILABLE_PLACEHOLDER__
-ENV VITE_API_PROXY_LOCKED=__VITE_API_PROXY_LOCKED_PLACEHOLDER__
-ENV VITE_DOCKER_DEPLOYMENT=__VITE_DOCKER_DEPLOYMENT_PLACEHOLDER__
-ENV VITE_DOCKER_LEGACY_API_URL_USED=__VITE_DOCKER_LEGACY_API_URL_USED_PLACEHOLDER__
-ENV VITE_PROMO_API_URL=__VITE_PROMO_API_URL_PLACEHOLDER__
-ENV VITE_PROMO_API_LABEL=__VITE_PROMO_API_LABEL_PLACEHOLDER__
+ENV VITE_TASK_BACKEND=flyreq \
+    VITE_DEFAULT_API_URL=__VITE_DEFAULT_API_URL_PLACEHOLDER__ \
+    VITE_API_PROXY_AVAILABLE=__VITE_API_PROXY_AVAILABLE_PLACEHOLDER__ \
+    VITE_API_PROXY_LOCKED=__VITE_API_PROXY_LOCKED_PLACEHOLDER__ \
+    VITE_DOCKER_DEPLOYMENT=__VITE_DOCKER_DEPLOYMENT_PLACEHOLDER__ \
+    VITE_DOCKER_LEGACY_API_URL_USED=__VITE_DOCKER_LEGACY_API_URL_USED_PLACEHOLDER__
 
+# .dockerignore allows source files only: no local secrets, database or outputs.
 COPY . .
-RUN npm run build
+RUN tar --exclude='./node_modules' --exclude='./dist' --exclude='./aipic-source.tar.gz' \
+        -czf /tmp/aipic-source.tar.gz . \
+    && npm run build \
+    && cp /tmp/aipic-source.tar.gz dist/aipic-source.tar.gz
 
-# ---- Persistent FlyReq task backend ----
-FROM node:24-alpine AS backend
-
+# Native dependencies must be installed for the target image's architecture.
+FROM node:24-alpine AS backend-dependencies
 WORKDIR /app/backend
 RUN apk add --no-cache python3 make g++
 COPY backend/package.json backend/package-lock.json ./
-RUN npm ci --omit=dev && apk del python3 make g++
-COPY package.json /app/package.json
-COPY backend/*.js backend/*.json backend/LICENSE ./
-ENV AIPIC_HOST=0.0.0.0
-ENV PORT=8788
-ENV FLYREQ_TASK_DB=/data/tasks.sqlite
-ENV FLYREQ_IMAGE_DIR=/data/images
-ENV FLYREQ_VIDEO_DIR=/data/videos
-ENV FLYREQ_LOG_DIR=/data/logs
+RUN npm ci --omit=dev
+
+# One image serves the UI, API proxy, persistent queue and WebSocket updates.
+FROM node:24-alpine AS runtime
+WORKDIR /app
+RUN apk add --no-cache libstdc++ \
+    && mkdir -p /data /app/dist \
+    && chown node:node /data /app/dist
+COPY --from=backend-dependencies /app/backend/node_modules ./backend/node_modules
+COPY backend/*.js backend/*.json backend/LICENSE backend/README.md ./backend/
+COPY package.json LICENSE README.md ./
+COPY --from=build /app/dist ./dist-template
+COPY deploy/inject-runtime-config.mjs ./deploy/inject-runtime-config.mjs
+COPY --chmod=755 deploy/docker-entrypoint.sh /usr/local/bin/aipic-entrypoint
+
+ENV NODE_ENV=production \
+    AIPIC_HOST=0.0.0.0 \
+    PORT=8788 \
+    AIPIC_STATIC_DIR=/app/dist \
+    ENABLE_API_PROXY=true \
+    LOCK_API_PROXY=true \
+    FLYREQ_TASK_DB=/data/tasks.sqlite \
+    FLYREQ_IMAGE_DIR=/data/images \
+    FLYREQ_VIDEO_DIR=/data/videos \
+    FLYREQ_LOG_DIR=/data/logs/application \
+    FLYREQ_IMAGE_UPSTREAM_LOG_DIR=/data/logs/image-upstream \
+    FLYREQ_VIDEO_UPSTREAM_LOG_DIR=/data/logs/video-upstream \
+    FLYREQ_TASK_CONCURRENCY=4
+
+USER node
 VOLUME ["/data"]
 EXPOSE 8788
-CMD ["node", "server.js"]
-
-# ---- Frontend and same-origin gateway ----
-FROM nginx:alpine AS frontend
-
-ENV HOST=0.0.0.0
-ENV PORT=80
-ENV DEFAULT_API_URL=https://sub2api.simplaj.top/
-ENV API_PROXY_URL=https://sub2api.simplaj.top/v1
-ENV ENABLE_API_PROXY=true
-ENV LOCK_API_PROXY=true
-ENV PROMO_API_URL=https://sub2api.simplaj.top/
-ENV PROMO_API_LABEL="稳定API中转站，注册送5刀，可免费修10张图"
-
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY deploy/nginx.conf /etc/nginx/templates/default.conf.template
-COPY --chmod=755 deploy/migrate-api-env.envsh /docker-entrypoint.d/05-migrate-api-env.envsh
-COPY --chmod=755 deploy/inject-api-url.sh /docker-entrypoint.d/40-inject-api-url.sh
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["aipic-entrypoint"]
+CMD ["node", "backend/server.js"]

@@ -13,3 +13,7 @@ backend/flyreq-images/
 backend/flyreq-videos/
 backend/logs/
 backend/data/
+
+release/
+
+.env

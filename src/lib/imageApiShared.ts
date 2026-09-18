@@ -217,7 +217,7 @@ export async function createApiResponseError(response: Response): Promise<ApiRes
   if (response.status === 502 && errorMsg === `HTTP ${response.status}`) {
     errorMsg = '上游接口返回 502，可能是中转站余额/渠道/模型不可用，或大尺寸图片生成超时。'
   } else if (response.status === 524 && (errorMsg === `HTTP ${response.status}` || /上游接口返回\s*HTTP\s*524/i.test(errorMsg))) {
-    errorMsg = '上游接口返回 524：sub2api 源站生成超时。通常是图片任务超过 Cloudflare 等网关等待时间，可降低尺寸/质量/数量，开启流式传输，或稍后/更换渠道重试。'
+    errorMsg = '上游接口返回 524：上游源站生成超时。通常是图片任务超过 Cloudflare 等网关等待时间，可降低尺寸/质量/数量，开启流式传输，或稍后/更换渠道重试。'
   } else if (/upstream did not return image output/i.test(errorMsg)) {
     errorMsg = '上游没有返回图片结果。常见原因是当前模型或中转渠道不支持 Image API/流式图片输出，或 4K、精修、参考图任务过重。已将默认请求改为非流式；请刷新页面后先用 1 张、1K/2K、快速质量测试，必要时更换模型或渠道。'
   }

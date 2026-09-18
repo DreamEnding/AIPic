@@ -4,6 +4,7 @@ import { addImageFromFile, ensureImageCached, submitTask, useStore } from '../st
 import type { TaskParams, TaskRecord } from '../types'
 import { getActiveApiProfile, validateApiProfile } from '../lib/apiProfiles'
 import { calculateImageSize, normalizeImageSize, type SizeTier } from '../lib/size'
+import { editorialRetouchPresets } from '../lib/editorialRetouchPresets'
 import { CloseIcon, EditIcon, HistoryIcon, PhotoIcon, RefreshIcon, SettingsIcon, WrenchIcon } from './icons'
 
 type RetouchCategoryId =
@@ -37,6 +38,7 @@ type RetouchTemplate = {
   scenario: string
   prompt: string
   params: Partial<TaskParams>
+  composition?: 'poster'
 }
 
 const highParams: Partial<TaskParams> = { n: 1, quality: 'high', output_format: 'png' }
@@ -79,7 +81,7 @@ const retouchCategories: Array<{ id: RetouchCategoryId; title: string; shortTitl
   { id: 'clothes', title: '衣物', shortTitle: '衣物', summary: '褶皱 / 污渍 / 领口', icon: EditIcon },
   { id: 'postColor', title: '后调色', shortTitle: '后期', summary: '质感肌 / 婚纱 / 儿童', icon: HistoryIcon },
   { id: 'crop', title: '裁剪', shortTitle: '裁剪', summary: '旋转 / 透视 / 补边', icon: SettingsIcon },
-  { id: 'aiNative', title: 'AI Native', shortTitle: 'AI', summary: '改稿 / 审片 / 一致性', icon: RefreshIcon },
+  { id: 'aiNative', title: 'AI Native', shortTitle: 'AI', summary: '纸刊 / 改稿 / 一致性', icon: RefreshIcon },
 ]
 
 const categoryTemplateAliases: Partial<Record<RetouchCategoryId, RetouchCategoryId[]>> = {
@@ -105,6 +107,7 @@ const targetOptions: Array<{ id: RetouchTargetId; label: string; prompt: string 
 ]
 
 const retouchTemplates: RetouchTemplate[] = [
+  ...editorialRetouchPresets,
   {
     id: 'body-bust',
     category: 'portrait',
@@ -814,6 +817,9 @@ function getOutputSizeIdFromSize(size: string): RetouchOutputSizeId {
 function buildRetouchPrompt(template: RetouchTemplate, strengthId: RetouchStrengthId, targetId: RetouchTargetId) {
   const strength = strengthOptions.find((option) => option.id === strengthId) ?? strengthOptions[1]
   const target = targetOptions.find((option) => option.id === targetId) ?? targetOptions[0]
+  if (template.composition === 'poster') {
+    return `${template.prompt}\n\n执行设置：视觉处理强度为${strength.label}，只作用于新增的排版、图形和材料效果；主体按${target.label}识别，保持原照片的身份、真实细节和内部空间关系。允许按本预设重新安排照片在成品画布中的位置，不擅自改写照片内容。`
+  }
   return `${template.prompt}\n\n执行设置：${strength.prompt}${target.prompt} 保持专业修图逻辑：只修改当前功能相关区域，不要改动无关主体、身份、文字、构图和真实光影。`
 }
 
@@ -823,10 +829,18 @@ function buildStackedRetouchPrompt(templates: RetouchTemplate[], strengthId: Ret
 
   const strength = strengthOptions.find((option) => option.id === strengthId) ?? strengthOptions[1]
   const target = targetOptions.find((option) => option.id === targetId) ?? targetOptions[0]
-  const steps = templates
+  const posterTemplate = templates.find((template) => template.composition === 'poster')
+  // 先完成选定的修图，再排版，避免“保护原构图”误阻止新纸刊页面的构成。
+  const orderedTemplates = posterTemplate
+    ? [...templates.filter((template) => template.composition !== 'poster'), posterTemplate]
+    : templates
+  const steps = orderedTemplates
     .map((template, index) => `${index + 1}. ${template.title}：${template.prompt}`)
     .join('\n')
 
+  if (posterTemplate) {
+    return `先在原照片上完成明确选择的修图，再将修好的照片放入最后一项纸刊版式：\n${steps}\n\n执行设置：${strength.prompt}${target.prompt} 普通修图仅影响已选择功能相关区域；纸刊设计可以调整整张照片在新画布中的位置和比例，不能再次修改照片内部的人物身份、主体结构、文字和真实光影。纸刊材料效果仅作用于新增区域。`
+  }
   return `对输入图片执行以下专业修图组合，按顺序叠加处理，不互相覆盖：\n${steps}\n\n执行设置：${strength.prompt}${target.prompt} 保持专业修图逻辑：只修改已选择功能相关区域，不要改动无关主体、身份、文字、构图和真实光影。`
 }
 
@@ -1271,9 +1285,14 @@ export default function RetouchWorkspace() {
   }
 
   const toggleTemplate = (template: RetouchTemplate) => {
-    const nextTemplateIds = selectedTemplateIds.includes(template.id)
+    const isRemoving = selectedTemplateIds.includes(template.id)
+    // 一张成品只使用一种纸刊版式；普通修图功能仍可叠加。
+    const compatibleTemplateIds = template.composition === 'poster'
+      ? selectedTemplateIds.filter((id) => retouchTemplates.find((item) => item.id === id)?.composition !== 'poster')
+      : selectedTemplateIds
+    const nextTemplateIds = isRemoving
       ? selectedTemplateIds.filter((id) => id !== template.id)
-      : [...selectedTemplateIds, template.id]
+      : [...compatibleTemplateIds, template.id]
     const nextTemplates = nextTemplateIds
       .map((id) => retouchTemplates.find((item) => item.id === id))
       .filter((item): item is RetouchTemplate => Boolean(item))
@@ -1284,8 +1303,10 @@ export default function RetouchWorkspace() {
     setGeneratedPrompt(buildStackedRetouchPrompt(nextTemplates, selectedStrengthId, selectedTargetId))
     if (nextTemplates.length) setParams(mergeTemplateParams(nextTemplates))
     showToast(
-      selectedTemplateIds.includes(template.id)
+      isRemoving
         ? `已移除「${template.title}」`
+        : template.composition === 'poster'
+        ? `已选用「${template.title}」纸刊版式`
         : `已叠加「${template.title}」`,
       'success',
     )

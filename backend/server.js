@@ -60,13 +60,13 @@ const LIMIT_ERROR_MESSAGES = {
   notAcceptingTasks: '服务器正在升级维护，暂不接受新任务。未完成任务将继续完成。',
 };
 const DEFAULT_IMAGE_MODEL_KEY_GUIDE = {
-  title: '还没有图片模型 API Key？',
-  description: '默认已为你准备 FlyReq 的 GPT Image 2 图片模型，只需要前往 FlyReq 获取 API Key，填入后保存即可开始生成图片。1元=20张4k图。',
-  ctaLabel: '前往 flyreq.com',
-  url: 'https://flyreq.com',
+  title: '配置图片模型 API',
+  description: '在设置中填写你所使用服务的 API 地址、模型与 API Key。密钥仅用于执行你的生成请求。',
+  ctaLabel: '查看 API 文档',
+  url: 'https://platform.openai.com/docs',
 };
 const DEFAULT_PLATFORM_BRANDING = {
-  platformName: 'FlyReq Image',
+  platformName: 'AIPic',
   logoUrl: '/favicon.png',
   iconUrl: '/favicon.png',
   pwaIcon192Url: '/icon-192.png',
@@ -77,10 +77,10 @@ const DEFAULT_PLATFORM_BRANDING = {
 const DEFAULT_IMAGE_MODEL_DEPLOYMENT_CONFIG = {
   id: 'flyreq-gpt-image-2',
   protocol: 'openai',
-  name: 'FlyReq',
+  name: 'OpenAI',
   modelId: '',
   usesPresetModelId: true,
-  baseUrl: 'https://flyreq.com',
+  baseUrl: 'https://api.openai.com/v1',
   builtinPreset: 'gpt-image-2',
   maxRefImages: 16,
   maxOutputSize: '4K',
@@ -91,9 +91,9 @@ const DEFAULT_IMAGE_MODEL_DEPLOYMENT_CONFIG = {
 const DEFAULT_VIDEO_MODEL_DEPLOYMENT_CONFIG = {
   id: 'flyreq-sora-2',
   protocol: 'openai',
-  name: 'FlyReq',
+  name: 'OpenAI',
   modelId: 'sora-2',
-  baseUrl: 'https://flyreq.com',
+  baseUrl: 'https://api.openai.com/v1',
 };
 const DEFAULT_VIDEO_WORKSPACE_CONFIG = {
   maxRefImages: 9,
@@ -3829,7 +3829,12 @@ function normalizeAipicProxyBaseUrl(value) {
   }
 }
 
+// 转发已有同步接口；环境开关仅控制此路由，不影响独立的后台生图任务。
 async function handleAipicProxy(req, res, parsedUrl) {
+  if (!parseBooleanEnv(getRuntimeEnv().ENABLE_API_PROXY, true)) {
+    sendJson(res, 404, { error: 'API 代理已关闭' });
+    return;
+  }
   const endpoint = parsedUrl.pathname.slice('/api-proxy/'.length).replace(/^\/+/, '');
   if (!endpoint) {
     sendJson(res, 400, { error: '缺少 API 代理路径' });
@@ -3857,7 +3862,7 @@ async function handleAipicProxy(req, res, parsedUrl) {
     const env = getRuntimeEnv();
     const baseUrl = normalizeAipicProxyBaseUrl(req.headers['x-aipic-upstream'])
       || normalizeAipicProxyBaseUrl(env.API_PROXY_URL)
-      || 'https://sub2api.simplaj.top/v1';
+      || 'https://api.openai.com/v1';
     const upstreamUrl = new URL(`${baseUrl}/${endpoint}`);
     upstreamUrl.search = parsedUrl.search;
     const connectionHeaders = String(req.headers.connection || '').toLowerCase().split(',').map(name => name.trim());

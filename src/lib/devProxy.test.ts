@@ -34,12 +34,12 @@ describe('buildApiUrl', () => {
   it('lets proxy targets keep their own API version prefix', () => {
     expect(
       buildApiUrl(
-        'https://sub2api.simplaj.top/',
+        'https://api.example.com/',
         'images/generations',
         {
           enabled: true,
           prefix: '/api-proxy',
-          target: 'https://sub2api.simplaj.top/v1',
+          target: 'https://api.example.com/v1',
           changeOrigin: true,
           secure: true,
         },

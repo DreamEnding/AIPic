@@ -528,39 +528,39 @@ describe('agent conversation persistence', () => {
     expect(serializedMigrated).toContain('image_generation_call')
   })
 
-  it('re-enables API proxy for saved default sub2api settings during migration', () => {
+  it('preserves API proxy preference for saved provider settings during migration', () => {
     const migrated = migratePersistedState({
       settings: {
         ...DEFAULT_SETTINGS,
         apiProxy: false,
         profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
           ...profile,
-          baseUrl: 'https://sub2api.simplaj.top/',
+          baseUrl: 'https://api.example.com/',
           apiProxy: false,
         })),
       },
     }) as { settings: typeof DEFAULT_SETTINGS }
 
-    expect(migrated.settings.apiProxy).toBe(DEFAULT_SETTINGS.apiProxy)
-    expect(migrated.settings.profiles[0].apiProxy).toBe(DEFAULT_SETTINGS.apiProxy)
+    expect(migrated.settings.apiProxy).toBe(false)
+    expect(migrated.settings.profiles[0].apiProxy).toBe(false)
     expect(migrated.settings.profiles[0].streamImages).toBe(true)
     expect(migrated.settings.profiles[0].streamPartialImages).toBe(3)
   })
 
-  it('re-enables API proxy for saved default sub2api /v1 settings during migration', () => {
+  it('preserves API proxy preference for saved provider /v1 settings during migration', () => {
     const migrated = migratePersistedState({
       settings: {
         ...DEFAULT_SETTINGS,
         apiProxy: false,
         profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
           ...profile,
-          baseUrl: 'https://sub2api.simplaj.top/v1',
+          baseUrl: 'https://api.example.com/v1',
           apiProxy: false,
         })),
       },
     }) as { settings: typeof DEFAULT_SETTINGS }
 
-    expect(migrated.settings.profiles[0].apiProxy).toBe(DEFAULT_SETTINGS.apiProxy)
+    expect(migrated.settings.profiles[0].apiProxy).toBe(false)
   })
 })
 

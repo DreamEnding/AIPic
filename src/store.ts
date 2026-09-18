@@ -48,7 +48,6 @@ import { collectAgentRoundOutputImageSlots, extractAgentReferenceIds, getAgentCu
 import { IMAGE_FETCH_CORS_HINT } from './lib/imageApiShared'
 import { getFalErrorMessage, getFalQueuedImageResult } from './lib/falAiImageApi'
 import { getCustomQueuedImageResult } from './lib/openaiCompatibleImageApi'
-import { isApiProxyAvailable, normalizeBaseUrl } from './lib/devProxy'
 import { validateMaskMatchesImage } from './lib/canvasImage'
 import { orderInputImagesForMask } from './lib/mask'
 import { getChangedParams, normalizeParamsForSettings } from './lib/paramCompatibility'
@@ -69,7 +68,6 @@ const MAX_THUMBNAIL_BACKFILL_CONCURRENT = 4
 const FAL_RECOVERY_POLL_MS = 10_000
 const CUSTOM_RECOVERY_POLL_MS = 10_000
 const BACKEND_RECOVERY_POLL_MS = 10_000
-const SUPPORT_PROMPT_IMAGE_THRESHOLD = 50
 const AGENT_INPUT_DRAFT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000
 const AGENT_ROUND_IMAGE_MENTION_RE = /@(?:第)?(\d+)轮图(\d+)/g
 const falRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -331,53 +329,6 @@ function orderImagesWithMaskFirst(images: InputImage[], maskTargetImageId: strin
   return next
 }
 
-function isAgentTask(task: TaskRecord) {
-  return task.sourceMode === 'agent' || Boolean(task.agentConversationId || task.agentRoundId)
-}
-
-function countSuccessfulOutputImages(tasks: TaskRecord[]) {
-  return tasks.reduce((count, task) => count + (task.status === 'done' && !isAgentTask(task) ? task.outputImages.length : 0), 0)
-}
-
-function skipSupportPromptForImportedData(tasks: TaskRecord[]) {
-  const count = countSuccessfulOutputImages(tasks)
-  useStore.setState((state) => {
-    if (state.supportPromptDismissed) return {}
-    if (count <= SUPPORT_PROMPT_IMAGE_THRESHOLD) {
-      return { supportPromptSkippedForImportedData: false }
-    }
-    if (state.supportPromptOpen) return {}
-    return { supportPromptSkippedForImportedData: true }
-  })
-}
-
-function showSupportPromptForExistingLocalData(tasks: TaskRecord[]) {
-  const count = countSuccessfulOutputImages(tasks)
-  useStore.setState((state) => {
-    if (state.supportPromptDismissed || state.supportPromptOpen) return {}
-    if (count <= SUPPORT_PROMPT_IMAGE_THRESHOLD) {
-      return { supportPromptSkippedForImportedData: false }
-    }
-    if (state.supportPromptSkippedForImportedData) return {}
-    return { supportPromptOpen: true }
-  })
-}
-
-function maybeOpenSupportPrompt(previousTasks: TaskRecord[], nextTasks: TaskRecord[], taskId: string) {
-  const state = useStore.getState()
-  if (state.supportPromptDismissed || state.supportPromptOpen || state.supportPromptSkippedForImportedData) return
-
-  const previousTask = previousTasks.find((task) => task.id === taskId)
-  const nextTask = nextTasks.find((task) => task.id === taskId)
-  if (!nextTask || previousTask?.status === 'done' || nextTask.status !== 'done' || nextTask.outputImages.length === 0) return
-
-  const previousCount = countSuccessfulOutputImages(previousTasks)
-  const nextCount = countSuccessfulOutputImages(nextTasks)
-  if (previousCount <= SUPPORT_PROMPT_IMAGE_THRESHOLD && nextCount > SUPPORT_PROMPT_IMAGE_THRESHOLD) {
-    useStore.setState({ supportPromptOpen: true })
-  }
-}
-
 function normalizeStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
@@ -554,29 +505,9 @@ export function migratePersistedState(persistedState: unknown): unknown {
   if (!isRecord(persistedState)) return persistedState
   return {
     ...persistedState,
-    settings: migrateDefaultApiProxySettings(persistedState.settings),
+    settings: normalizeSettings(persistedState.settings),
     agentConversations: stripPersistedAgentConversations(persistedState.agentConversations),
   }
-}
-
-function migrateDefaultApiProxySettings(settings: unknown): unknown {
-  const normalized = normalizeSettings(settings)
-  const defaultBaseUrl = normalizeBaseUrl(DEFAULT_SETTINGS.baseUrl)
-  const profiles = normalized.profiles.map((profile) => {
-    if (profile.provider !== 'openai') return profile
-    if (normalizeBaseUrl(profile.baseUrl) !== defaultBaseUrl) return profile
-    return {
-      ...profile,
-      apiProxy: DEFAULT_SETTINGS.apiProxy,
-      streamImages: DEFAULT_SETTINGS.streamImages,
-      streamPartialImages: profile.streamPartialImages ?? DEFAULT_SETTINGS.streamPartialImages,
-    }
-  })
-
-  return normalizeSettings({
-    ...normalized,
-    profiles,
-  })
 }
 
 function createAgentConversation(now = Date.now()): AgentConversation {
@@ -640,9 +571,6 @@ export function getPersistedState(state: AppState) {
     agentSidebarCollapsed: state.agentSidebarCollapsed,
     agentAssetTab: state.agentAssetTab,
     agentAssetPanelCollapsed: state.agentAssetPanelCollapsed,
-    supportPromptDismissed: state.supportPromptDismissed,
-    supportPromptOpen: state.supportPromptOpen,
-    supportPromptSkippedForImportedData: state.supportPromptSkippedForImportedData,
   }
 }
 
@@ -658,7 +586,7 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
   if (!persistedState || typeof persistedState !== 'object') return currentState
 
   const persisted = persistedState as Partial<AppState>
-  const settings = normalizeSettings(migrateDefaultApiProxySettings(persisted.settings ?? currentState.settings))
+  const settings = normalizeSettings(persisted.settings ?? currentState.settings)
   const hasPersistedAgentConversations = Array.isArray(persisted.agentConversations)
   if (hasPersistedAgentConversations && normalizeAgentConversations(persisted.agentConversations).length > 0) {
     agentConversationMigrationPending = true
@@ -709,9 +637,6 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
     agentSidebarCollapsed: Boolean(persisted.agentSidebarCollapsed),
     agentAssetTab: persisted.agentAssetTab === 'references' ? 'references' : 'outputs',
     agentAssetPanelCollapsed: Boolean(persisted.agentAssetPanelCollapsed),
-    supportPromptDismissed: Boolean(persisted.supportPromptDismissed),
-    supportPromptOpen: Boolean(persisted.supportPromptOpen),
-    supportPromptSkippedForImportedData: Boolean(persisted.supportPromptSkippedForImportedData),
     prompt: restoredAgentDraft ? restoredAgentDraft.prompt : galleryInputDraft?.prompt ?? '',
     inputImages: restoredAgentDraft ? restoredAgentDraft.inputImages : galleryInputDraft?.inputImages ?? [],
     maskDraft: restoredAgentDraft ? restoredAgentDraft.maskDraft : galleryInputDraft?.maskDraft ?? null,
@@ -811,11 +736,6 @@ interface AppState {
   showSettings: boolean
   settingsTabRequest: SettingsTab | null
   setShowSettings: (v: boolean, tab?: SettingsTab) => void
-  supportPromptOpen: boolean
-  supportPromptDismissed: boolean
-  supportPromptSkippedForImportedData: boolean
-  setSupportPromptOpen: (v: boolean) => void
-  dismissSupportPrompt: () => void
 
   // Toast
   toast: { message: string; type: ToastType } | null
@@ -1392,12 +1312,7 @@ export const useStore = create<AppState>()(
 
       // Tasks
       tasks: [],
-      setTasks: (tasks) => set(() => ({
-        tasks,
-        ...(countSuccessfulOutputImages(tasks) <= SUPPORT_PROMPT_IMAGE_THRESHOLD
-          ? { supportPromptSkippedForImportedData: false }
-          : {}),
-      })),
+      setTasks: (tasks) => set({ tasks }),
       streamPreviews: {},
       streamPreviewSlots: {},
       setTaskStreamPreview: (taskId, image, requestIndex = 0) => set((s) => {
@@ -1469,11 +1384,6 @@ export const useStore = create<AppState>()(
           ...(!showSettings ? { settingsTabRequest: null } : {}),
         })
       },
-      supportPromptOpen: false,
-      supportPromptDismissed: false,
-      supportPromptSkippedForImportedData: false,
-      setSupportPromptOpen: (supportPromptOpen) => set({ supportPromptOpen }),
-      dismissSupportPrompt: () => set({ supportPromptOpen: false, supportPromptDismissed: true }),
 
       // Toast
       toast: null,
@@ -1644,30 +1554,20 @@ export function getTaskApiProfile(settings: AppSettings, task: TaskRecord): ApiP
 
 function createSettingsForApiProfile(settings: AppSettings, profile: ApiProfile): AppSettings {
   const normalized = normalizeSettings(settings)
-  const requestProfile = getApiProfileForRequest(profile)
   return normalizeSettings({
     ...normalized,
-    baseUrl: requestProfile.baseUrl,
-    apiKey: requestProfile.apiKey,
-    model: requestProfile.model,
-    timeout: requestProfile.timeout,
-    apiMode: requestProfile.apiMode,
-    codexCli: requestProfile.codexCli,
-    apiProxy: requestProfile.apiProxy,
-    streamImages: requestProfile.streamImages,
-    streamPartialImages: requestProfile.streamPartialImages,
-    profiles: normalized.profiles.map((item) => item.id === requestProfile.id ? requestProfile : item),
-    activeProfileId: requestProfile.id,
+    baseUrl: profile.baseUrl,
+    apiKey: profile.apiKey,
+    model: profile.model,
+    timeout: profile.timeout,
+    apiMode: profile.apiMode,
+    codexCli: profile.codexCli,
+    apiProxy: profile.apiProxy,
+    streamImages: profile.streamImages,
+    streamPartialImages: profile.streamPartialImages,
+    profiles: normalized.profiles.map((item) => item.id === profile.id ? profile : item),
+    activeProfileId: profile.id,
   })
-}
-
-function getApiProfileForRequest(profile: ApiProfile): ApiProfile {
-  if (profile.provider !== 'openai') return profile
-  const defaultBaseUrl = normalizeBaseUrl(DEFAULT_SETTINGS.baseUrl)
-  if (normalizeBaseUrl(profile.baseUrl) !== defaultBaseUrl) return profile
-  const patch: Partial<ApiProfile> = {}
-  if (!profile.apiProxy && isApiProxyAvailable()) patch.apiProxy = true
-  return Object.keys(patch).length ? { ...profile, ...patch } : profile
 }
 
 function getReusedTaskApiProfile(settings: AppSettings, profileId: string | null): ApiProfile | null {
@@ -1737,7 +1637,7 @@ function getApiResponseStatusHint(
   const status = 'status' in err ? (err as { status?: unknown }).status : undefined
   if (status === 524) {
     return usesApiProxy
-      ? `提示：请求已到达 sub2api，但 sub2api 源站在 Cloudflare 限制内没有返回结果（524）。这不是前端或 Pages 代理故障。请先用 1K、1 张、快速质量测试，开启流式传输/中间图，或换模型/渠道；4K、精修、多图、带参考图更容易触发。${getTimeoutStreamingHint(profile)}`
+      ? `提示：请求已到达上游服务，但上游源站在网关等待时间内没有返回结果（524）。这不是前端或 Pages 代理故障。请先用 1K、1 张、快速质量测试，开启流式传输/中间图，或换模型/渠道；4K、精修、多图、带参考图更容易触发。${getTimeoutStreamingHint(profile)}`
       : `提示：API 返回 524，说明上游源站长时间没有响应。请先降低尺寸/质量/数量，开启流式传输/中间图，或更换直连地址、模型、渠道后重试。${getTimeoutStreamingHint(profile)}`
   }
   if (status !== 502) return null
@@ -1966,7 +1866,6 @@ export async function initStore() {
     .filter((task, index) => interruptedTaskIds.has(task.id) || task.rawResponsePayload !== markedTasks[index]?.rawResponsePayload)
     .map((task) => putTask(task)))
   useStore.getState().setTasks(tasks)
-  showSupportPromptForExistingLocalData(tasks)
   for (const task of tasks) {
     if (
       task.apiProvider === 'fal' &&
@@ -2147,7 +2046,7 @@ export async function submitTask(options: { allowFullMask?: boolean; useCurrentA
         return
       }
     } else {
-      activeProfile = getApiProfileForRequest(reusedProfile)
+      activeProfile = reusedProfile
       requestSettings = createSettingsForApiProfile(normalizedSettings, reusedProfile)
     }
   }
@@ -3839,7 +3738,7 @@ async function executeTask(taskId: string) {
     })
     return
   }
-  const activeProfile = getApiProfileForRequest(taskProfile ?? getActiveApiProfile(settings))
+  const activeProfile = taskProfile ?? getActiveApiProfile(settings)
   const requestSettings = createSettingsForApiProfile(settings, activeProfile)
   const taskProvider = task.apiProvider ?? activeProfile.provider
   let falRequestInfo: { requestId: string; endpoint: string } | null = task.falRequestId && task.falEndpoint
@@ -4071,7 +3970,6 @@ export function updateTaskInStore(taskId: string, patch: Partial<TaskRecord>) {
     t.id === taskId ? { ...t, ...patch } : t,
   )
   setTasks(updated)
-  maybeOpenSupportPrompt(tasks, updated, taskId)
   const task = updated.find((t) => t.id === taskId)
   if (task) putTask(task)
 }
@@ -4300,15 +4198,13 @@ export async function clearData(options: ClearOptions = { clearConfig: true, cle
     useStore.setState({
       agentConversations: [],
       activeAgentConversationId: null,
-      supportPromptOpen: false,
-      supportPromptSkippedForImportedData: false,
     })
     clearInputImages()
     clearMaskDraft()
   }
 
   if (options.clearConfig) {
-    useStore.setState({ dismissedCodexCliPrompts: [], supportPromptDismissed: false })
+    useStore.setState({ dismissedCodexCliPrompts: [] })
     setSettings({ ...DEFAULT_SETTINGS })
     setParams({ ...DEFAULT_PARAMS })
   }
@@ -4648,7 +4544,6 @@ export async function importData(file: File, options: ImportOptions = { importCo
         }
       })
       await replaceStoredAgentConversations(useStore.getState().agentConversations)
-      skipSupportPromptForImportedData(tasks)
       scheduleThumbnailBackfill(importedImageIds)
     }
 

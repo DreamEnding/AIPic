@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react'
 import { useStore } from '../store'
-import { useVersionCheck } from '../hooks/useVersionCheck'
 import HistoryModal from './HistoryModal'
 import { EditIcon, HistoryIcon, SettingsIcon } from './icons'
 
@@ -12,7 +11,6 @@ export default function Header() {
   const agentConversations = useStore((s) => s.agentConversations)
   const activeAgentConversationId = useStore((s) => s.activeAgentConversationId)
   const activeConversation = agentConversations.find((item) => item.id === activeAgentConversationId)
-  const { hasUpdate, latestRelease, dismiss } = useVersionCheck()
   const [showHistoryModal, setShowHistoryModal] = useState(false)
   const historyButtonRef = useRef<HTMLButtonElement>(null)
   const createConversation = useStore((s) => s.createAgentConversation)
@@ -26,18 +24,6 @@ export default function Header() {
               <span className="text-[17px] sm:text-lg font-bold tracking-tight text-zinc-100">
                 AI 专业修图台
               </span>
-              {hasUpdate && latestRelease && (
-                <a
-                  href={latestRelease.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={dismiss}
-                  className="absolute -right-1 -top-1 translate-x-full -translate-y-1/4 px-1 py-0.5 rounded-[4px] border border-red-500/30 text-[9px] font-black bg-red-500 text-white hover:bg-red-600 transition-all animate-fade-in leading-none shadow-sm"
-                  title={`新版本 ${latestRelease.tag}`}
-                >
-                  NEW
-                </a>
-              )}
             </h1>
             {appMode === 'agent' && <div className="hidden sm:flex items-center gap-1 relative">
               <button

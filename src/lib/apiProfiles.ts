@@ -19,8 +19,7 @@ import { readRuntimeEnv } from './runtimeEnv'
 import { DEFAULT_IMAGE_TIMEOUT_SECONDS, normalizeImageTimeoutSeconds } from './imageRequestTimeout'
 import { isImportableConfigUrl } from './customProviderConfigUrl'
 
-const LEGACY_OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
-const OPENAI_DEFAULT_BASE_URL = 'https://sub2api.simplaj.top/'
+const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
 const RAW_DEFAULT_API_URL = readRuntimeEnv(import.meta.env.VITE_DEFAULT_API_URL)
 const DEFAULT_OPENAI_API_PROXY = isApiProxyAvailable()
 const DOCKER_DEPLOYMENT = readRuntimeEnv(import.meta.env.VITE_DOCKER_DEPLOYMENT) === 'true'
@@ -37,8 +36,6 @@ export const DEFAULT_OPENAI_PROFILE_ID = 'default-openai'
 export const DEFAULT_API_TIMEOUT = DEFAULT_IMAGE_TIMEOUT_SECONDS
 
 const BUILT_IN_PROVIDER_IDS = new Set<ApiProvider>(['openai', 'fal'])
-const LEGACY_DEFAULT_BASE_URLS = new Set([LEGACY_OPENAI_DEFAULT_BASE_URL])
-const CURRENT_DEFAULT_BASE_URL = OPENAI_DEFAULT_BASE_URL.trim().replace(/\/+$/, '')
 const DEFAULT_CUSTOM_PROVIDER_PATHS = {
   generationPath: 'images/generations',
   editPath: 'images/edits',
@@ -413,7 +410,7 @@ function normalizeProviderDraft(input: unknown, provider: ApiProvider, customPro
   return {
     baseUrl: provider === 'fal'
       ? baseUrl?.trim().replace(/\/+$/, '') || DEFAULT_FAL_BASE_URL
-      : normalizeMigratedBaseUrl(baseUrl),
+      : baseUrl,
     model,
     apiMode,
     codexCli: typeof input.codexCli === 'boolean' ? input.codexCli : fallback.codexCli,
@@ -422,12 +419,6 @@ function normalizeProviderDraft(input: unknown, provider: ApiProvider, customPro
     streamImages: typeof input.streamImages === 'boolean' ? input.streamImages : fallback.streamImages,
     streamPartialImages: normalizeStreamPartialImages(input.streamPartialImages, fallback.streamPartialImages),
   }
-}
-
-function normalizeMigratedBaseUrl(baseUrl: string | undefined): string | undefined {
-  if (typeof baseUrl !== 'string') return baseUrl
-  const normalized = baseUrl.trim().replace(/\/+$/, '')
-  return LEGACY_DEFAULT_BASE_URLS.has(normalized) || normalized === CURRENT_DEFAULT_BASE_URL ? DEFAULT_BASE_URL : baseUrl
 }
 
 function normalizeProviderDrafts(input: unknown, customProviderIds: Set<string>): ApiProfile['providerDrafts'] {
@@ -445,8 +436,7 @@ export function normalizeApiProfile(input: unknown, fallback?: Partial<ApiProfil
   const provider: ApiProvider = rawProvider === 'fal' || customProviderIds.has(rawProvider) ? rawProvider : 'openai'
   const defaults = provider === 'fal' ? createDefaultFalProfile(fallback) : createDefaultOpenAIProfile(fallback)
   const apiMode: ApiMode = record.apiMode === 'responses' ? 'responses' : 'images'
-  const rawBaseUrl = typeof record.baseUrl === 'string' ? record.baseUrl : defaults.baseUrl
-  const baseUrl = normalizeMigratedBaseUrl(rawBaseUrl) ?? rawBaseUrl
+  const baseUrl = typeof record.baseUrl === 'string' ? record.baseUrl : defaults.baseUrl
 
   return {
     ...defaults,
@@ -485,7 +475,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
   const customProviders = normalizeCustomProviderDefinitions(record.customProviders)
   const customProviderIds = new Set(customProviders.map((provider) => provider.id))
   const legacyProfile = createDefaultOpenAIProfile({
-    baseUrl: normalizeMigratedBaseUrl(typeof record.baseUrl === 'string' ? record.baseUrl : DEFAULT_BASE_URL) ?? DEFAULT_BASE_URL,
+    baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : DEFAULT_BASE_URL,
     apiKey: typeof record.apiKey === 'string' ? record.apiKey : '',
     model: typeof record.model === 'string' && record.model.trim() ? record.model : DEFAULT_IMAGES_MODEL,
     timeout: normalizeImageTimeoutSeconds(record.timeout),

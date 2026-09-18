@@ -1,48 +1,23 @@
 services:
   aipic:
+    image: "${AIPIC_IMAGE:-aipic:0.4.9}"
     build:
       context: .
       dockerfile: deploy/Dockerfile
-      target: frontend
-    image: aipic:local
+      target: runtime
     container_name: aipic
     restart: unless-stopped
-    depends_on:
-      - backend
     ports:
-      - "${AIPIC_PORT:-8080}:80"
+      - "${AIPIC_PORT:-8080}:8788"
     environment:
-      DEFAULT_API_URL: "${DEFAULT_API_URL:-https://sub2api.simplaj.top/}"
-      API_PROXY_URL: "${API_PROXY_URL:-https://sub2api.simplaj.top/v1}"
+      DEFAULT_API_URL: "${DEFAULT_API_URL:-https://api.openai.com/v1}"
+      API_PROXY_URL: "${API_PROXY_URL:-https://api.openai.com/v1}"
       ENABLE_API_PROXY: "${ENABLE_API_PROXY:-true}"
       LOCK_API_PROXY: "${LOCK_API_PROXY:-true}"
-      PROMO_API_URL: "${PROMO_API_URL:-https://sub2api.simplaj.top/}"
-      PROMO_API_LABEL: "${PROMO_API_LABEL:-稳定API中转站，注册送5刀，可免费修10张图}"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
-  backend:
-    build:
-      context: .
-      dockerfile: deploy/Dockerfile
-      target: backend
-    image: aipic-backend:local
-    restart: unless-stopped
-    environment:
-      AIPIC_HOST: "0.0.0.0"
-      PORT: "8788"
-      FLYREQ_TASK_DB: /data/tasks.sqlite
-      FLYREQ_IMAGE_DIR: /data/images
-      FLYREQ_VIDEO_DIR: /data/videos
-      FLYREQ_LOG_DIR: /data/logs
       FLYREQ_TASK_CONCURRENCY: "${FLYREQ_TASK_CONCURRENCY:-4}"
     volumes:
       - aipic-data:/data
-    expose:
-      - "8788"
+    stop_grace_period: 30s
 
 volumes:
   aipic-data:

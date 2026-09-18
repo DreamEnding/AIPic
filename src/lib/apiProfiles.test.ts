@@ -354,7 +354,7 @@ describe('mergeImportedSettings', () => {
     expect(merged.profiles).toHaveLength(2)
   })
 
-  it('migrates the old OpenAI default URL to the current default URL', () => {
+  it('preserves an explicitly saved OpenAI API URL', () => {
     const settings = normalizeSettings({
       baseUrl: 'https://api.openai.com/v1',
       profiles: [
@@ -362,8 +362,8 @@ describe('mergeImportedSettings', () => {
       ],
     })
 
-    expect(settings.baseUrl).toBe(DEFAULT_SETTINGS.baseUrl)
-    expect(settings.profiles[0].baseUrl).toBe(DEFAULT_SETTINGS.baseUrl)
+    expect(settings.baseUrl).toBe('https://api.openai.com/v1')
+    expect(settings.profiles[0].baseUrl).toBe('https://api.openai.com/v1')
   })
 
   it('appends imported custom providers and keeps imported custom profile references', () => {

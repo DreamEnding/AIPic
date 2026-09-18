@@ -564,7 +564,7 @@ describe('callImageApi', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       error: {
         message: '上游接口返回 HTTP 524',
-        upstream: 'https://sub2api.simplaj.top',
+        upstream: 'https://api.example.com',
         status: 524,
         body: '<title>524: A timeout occurred</title>',
       },
@@ -578,13 +578,13 @@ describe('callImageApi', () => {
         ...DEFAULT_SETTINGS,
         apiKey: 'test-key',
         apiProxy: true,
-        baseUrl: 'https://sub2api.simplaj.top/',
+        baseUrl: 'https://api.example.com/',
       },
       prompt: 'prompt',
       params: { ...DEFAULT_PARAMS },
       inputImageDataUrls: [],
     })).rejects.toMatchObject({
-      message: expect.stringContaining('sub2api 源站生成超时'),
+      message: expect.stringContaining('上游源站生成超时'),
       status: 524,
       rawResponsePayload: expect.stringContaining('A timeout occurred'),
     })
@@ -606,7 +606,7 @@ describe('callImageApi', () => {
         ...DEFAULT_SETTINGS,
         apiKey: 'test-key',
         apiProxy: true,
-        baseUrl: 'https://sub2api.simplaj.top/',
+        baseUrl: 'https://api.example.com/',
       },
       prompt: 'prompt',
       params: { ...DEFAULT_PARAMS },

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { normalizeBaseUrl } from '../lib/api'
+import { readRuntimeEnv } from '../lib/runtimeEnv'
 import { isApiProxyAvailable, isApiProxyLocked, readClientDevProxyConfig } from '../lib/devProxy'
 import { useStore, exportData, importData, clearData, type SettingsTab } from '../store'
 import {
@@ -1446,14 +1447,6 @@ export default function SettingsModal() {
                 <label className="retouch-settings-api-card block">
                   <div className="mb-1.5 flex items-center justify-between">
                     <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">API 地址</span>
-                    <a
-                      href="https://simplaj-docs.pages.dev/"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="retouch-settings-api-help"
-                    >
-                      没有 API？
-                    </a>
                   </div>
                   <input
                     value={activeProfile.baseUrl}
@@ -1907,12 +1900,21 @@ export default function SettingsModal() {
                 </a>
                 
                 <p className="mt-8 mb-6 max-w-[360px] text-center text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
-                  本项目的成长离不开每一位用户的使用、反馈、贡献与支持，感谢一路有你。
+                  前端基于 GPT Image Playground（MIT），后台任务移植自 FlyReq Image Studio（AGPL-3.0）。保留各自源码与许可。
                 </p>
 
                 <div className="flex flex-wrap items-center justify-center gap-3">
+                  {readRuntimeEnv(import.meta.env.VITE_DOCKER_DEPLOYMENT) === 'true' && (
+                    <a
+                      href="/aipic-source.tar.gz"
+                      download
+                      className="flex items-center justify-center gap-2 rounded-xl bg-gray-100/80 px-5 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-200 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1]"
+                    >
+                      下载当前版本源码
+                    </a>
+                  )}
                   <a
-                    href="https://github.com/CookSleep/gpt_image_playground/issues"
+                    href="https://github.com/simplaj/AIPic/issues"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-gray-100/80 px-5 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-200 hover:text-gray-900 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1] dark:hover:text-white"
@@ -1921,17 +1923,6 @@ export default function SettingsModal() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                     </svg>
                     反馈问题
-                  </a>
-                  <a
-                    href="https://www.ifdian.net/a/cooksleep"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-gray-100/80 px-5 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-200 hover:text-gray-900 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1] dark:hover:text-white"
-                  >
-                    <svg className="h-4 w-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                    </svg>
-                    赞助作者
                   </a>
                 </div>
               </div>
