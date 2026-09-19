@@ -17,3 +17,7 @@ backend/data/
 release/
 
 .env
+
+Ref/
+promo-video/
+docs/diagnostics/

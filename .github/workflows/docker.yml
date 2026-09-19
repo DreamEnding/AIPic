@@ -1,44 +1,172 @@
-name: Build and Publish Docker Image
+name: Build and Publish Docker Release
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
+# Finish one release before the next can update the shared image aliases.
+concurrency:
+  group: aipic-docker-release
+  cancel-in-progress: false
+
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  docker:
-    runs-on: ubuntu-latest
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
+      image: ${{ steps.release.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate the release tag and package versions
+        id: release
+        run: node scripts/package-release.mjs prepare
+      - name: Refuse to replace an already published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          jq -e --arg tag "$TAG" '[.[][] | select(.tag_name == $tag and .draft == false)] | length == 0' "$RUNNER_TEMP/releases.json"
 
-      - uses: docker/setup-qemu-action@v3
-
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+      RELEASE_IMAGE: ${{ needs.prepare.outputs.image }}
+      RELEASE_ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - name: Set the release asset directory
+        run: echo "RELEASE_DIR=$RUNNER_TEMP/release-assets" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/aipic
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
-
-      - uses: docker/build-push-action@v6
+      - name: Build the native image and export both distribution formats
+        id: build
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          target: runtime
+          platforms: linux/${{ matrix.arch }}
+          # Both exporters use the same build result. No application container is run.
+          outputs: |
+            type=docker,name=aipic:${{ needs.prepare.outputs.version }},dest=${{ runner.temp }}/aipic.tar,oci-mediatypes=false
+            type=image,name=${{ needs.prepare.outputs.image }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=false
+          # The Docker archive format cannot retain manifest attestations.
+          provenance: false
+          sbom: false
+          labels: |
+            org.opencontainers.image.title=AIPic
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare.outputs.tag }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.revision=${{ needs.prepare.outputs.commit }}
+          cache-from: type=gha,scope=aipic-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=aipic-${{ matrix.arch }}
+      - name: Package and inspect the image archive metadata
+        env:
+          RELEASE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker buildx imagetools inspect "$RELEASE_IMAGE@$RELEASE_DIGEST" --raw > "$RUNNER_TEMP/image-manifest.json"
+          node scripts/package-release.mjs image "$RUNNER_TEMP/aipic.tar" "$RUNNER_TEMP/image-manifest.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-image-${{ matrix.arch }}
+          path: ${{ runner.temp }}/release-assets/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+      RELEASE_IMAGE: ${{ needs.prepare.outputs.image }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - name: Set the release asset directory
+        run: echo "RELEASE_DIR=$RUNNER_TEMP/release-assets" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-image-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-assets
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assemble the versioned multi-platform image
+        run: |
+          mapfile -t sources < <(node scripts/package-release.mjs sources)
+          docker buildx imagetools create --tag "$RELEASE_IMAGE:$RELEASE_VERSION" "${sources[@]}"
+          docker buildx imagetools inspect "$RELEASE_IMAGE:$RELEASE_VERSION" --format '{{json .Manifest}}' > "$RUNNER_TEMP/release-manifest.json"
+      - name: Create source archive, deployment files, metadata and checksums
+        run: node scripts/package-release.mjs assemble "$RUNNER_TEMP/release-manifest.json"
+      - name: Upload all assets to a draft release
+        run: |
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          state=$(jq -r --arg tag "$RELEASE_TAG" '[.[][] | select(.tag_name == $tag)] | if length == 0 then "missing" elif length == 1 and .[0].draft then "draft" else "published" end' "$RUNNER_TEMP/releases.json")
+          if [ "$state" = "missing" ]; then
+            gh release create "$RELEASE_TAG" --verify-tag --target "$RELEASE_COMMIT" --title "AIPic $RELEASE_VERSION" --notes-file "$RELEASE_DIR/README.md" --draft
+          elif [ "$state" = "draft" ]; then
+            gh release edit "$RELEASE_TAG" --target "$RELEASE_COMMIT" --title "AIPic $RELEASE_VERSION" --notes-file "$RELEASE_DIR/README.md" --draft
+          else
+            echo '::error::Refusing to modify an already published release.'
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "$RELEASE_DIR"/* --clobber
+      - name: Publish the release and image aliases
+        run: |
+          # Do not let a rerun of an older version move latest backwards.
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          latest=$(node scripts/package-release.mjs latest "$RUNNER_TEMP/releases.json")
+          if [ "$latest" = "true" ]; then
+            digest=$(node -p "JSON.parse(require('fs').readFileSync(process.env.RELEASE_DIR + '/release.json', 'utf8')).registryDigest")
+            docker buildx imagetools create --tag "$RELEASE_IMAGE:latest" --tag "$RELEASE_IMAGE:${RELEASE_VERSION%.*}" "$RELEASE_IMAGE@$digest"
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false --latest="$latest"
+          gh release view "$RELEASE_TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
