@@ -1,11 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, PointerEvent, WheelEvent as ReactWheelEvent } from 'react'
+import type { CSSProperties, PointerEvent, SVGProps, WheelEvent as ReactWheelEvent } from 'react'
 import { addImageFromFile, ensureImageCached, submitTask, useStore } from '../store'
 import type { TaskParams, TaskRecord } from '../types'
 import { getActiveApiProfile, validateApiProfile } from '../lib/apiProfiles'
 import { calculateImageSize, normalizeImageSize, type SizeTier } from '../lib/size'
 import { editorialRetouchPresets } from '../lib/editorialRetouchPresets'
 import { CloseIcon, EditIcon, HistoryIcon, PhotoIcon, RefreshIcon, SettingsIcon, WrenchIcon } from './icons'
+
+type StudioSymbolName = 'sparkles' | 'compare' | 'expand' | 'arrow' | 'collage' | 'panels' | 'minimal'
+
+/** 共享细线图标让工作台工具和预设保持同一视觉语言。 */
+function StudioSymbol({ name, ...props }: SVGProps<SVGSVGElement> & { name: StudioSymbolName }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+      {name === 'sparkles' && <><path d="m12 3 2.3 6.7L21 12l-6.7 2.3L12 21l-2.3-6.7L3 12l6.7-2.3L12 3Z" /><path d="M20 3v4m-2-2h4" /></>}
+      {name === 'compare' && <><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M12 4v16M6 15l3-3 3 2m0-2 3-3 3 3" /></>}
+      {name === 'expand' && <><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M3 3l6 6m12-6-6 6M3 21l6-6m12 6-6-6" /></>}
+      {name === 'arrow' && <path d="M5 12h14m-6-6 6 6-6 6" />}
+      {name === 'collage' && <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="m4 14 4-2 3 2 4-3 5 2M8 9h5m2 8h2" /></>}
+      {name === 'panels' && <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M4 12h16m-12 5h3m2-2h3M8 7h8" /></>}
+      {name === 'minimal' && <><rect x="4" y="3" width="16" height="18" rx="2" /><rect x="10" y="8" width="5" height="4" rx=".5" /><path d="M10 15h5" /></>}
+    </svg>
+  )
+}
+
+/** 为 AI Native 分类提供与预览工具一致的细线图标。 */
+function NativeIcon(props: SVGProps<SVGSVGElement>) {
+  return <StudioSymbol {...props} name="sparkles" />
+}
 
 type RetouchCategoryId =
   | 'aiColor'
@@ -73,6 +95,7 @@ const formatOptions: Array<{ label: string; value: TaskParams['output_format'] }
   { label: 'JPEG', value: 'jpeg' },
 ]
 const retouchCategories: Array<{ id: RetouchCategoryId; title: string; shortTitle: string; summary: string; icon: typeof PhotoIcon }> = [
+  { id: 'aiNative', title: 'AI Native', shortTitle: 'AI Native', summary: '纸刊创作与智能修图', icon: NativeIcon },
   { id: 'aiColor', title: 'AI色彩', shortTitle: '色彩', summary: 'AI追色 / 样片 / 套图', icon: RefreshIcon },
   { id: 'tone', title: '调色', shortTitle: '调色', summary: '白平衡 / 全局 / 黑白场', icon: SettingsIcon },
   { id: 'local', title: '局部', shortTitle: '局部', summary: '面部 / 背景 / 区域色彩', icon: EditIcon },
@@ -81,7 +104,6 @@ const retouchCategories: Array<{ id: RetouchCategoryId; title: string; shortTitl
   { id: 'clothes', title: '衣物', shortTitle: '衣物', summary: '褶皱 / 污渍 / 领口', icon: EditIcon },
   { id: 'postColor', title: '后调色', shortTitle: '后期', summary: '质感肌 / 婚纱 / 儿童', icon: HistoryIcon },
   { id: 'crop', title: '裁剪', shortTitle: '裁剪', summary: '旋转 / 透视 / 补边', icon: SettingsIcon },
-  { id: 'aiNative', title: 'AI Native', shortTitle: 'AI', summary: '纸刊 / 改稿 / 一致性', icon: RefreshIcon },
 ]
 
 const categoryTemplateAliases: Partial<Record<RetouchCategoryId, RetouchCategoryId[]>> = {
@@ -933,17 +955,17 @@ function RetouchPreviewEmpty({
   const title = hasHistorySelection
     ? '历史记录缺少可预览图片'
     : generationMode === 'text'
-      ? '输入画面描述开始生成'
-      : '上传参考图开始修图'
+      ? '让灵感成为画面'
+      : '从一张照片开始'
   const description = hasHistorySelection
     ? '请选择另一条历史，或重新上传参考图。'
     : generationMode === 'text'
-      ? '文生图模式不会引用参考图，适合从空白画布创建新图。'
-      : '清空参考图后不会继续显示上一次修图结果。'
+      ? '在右侧写下画面描述，创建你的第一张作品。'
+      : '拖入照片，或选择文件。为它挑选一种新的表达。'
 
   return (
     <button type="button" className="retouch-preview-empty" onClick={onUpload}>
-      <PhotoIcon className="h-6 w-6" />
+      <span className="retouch-empty-icon"><PhotoIcon className="h-7 w-7" aria-hidden="true" /></span>
       <strong>{title}</strong>
       <span>{description}</span>
       <span className="retouch-preview-upload-cta">
@@ -1023,9 +1045,9 @@ export default function RetouchWorkspace() {
   const [previewPanDragging, setPreviewPanDragging] = useState(false)
   const previewPanStartRef = useRef({ pointerId: 0, clientX: 0, clientY: 0, x: 0, y: 0 })
   const [isDraggingUpload, setIsDraggingUpload] = useState(false)
-  const [selectedCategoryId, setSelectedCategoryId] = useState<RetouchCategoryId>('aiColor')
+  const [selectedCategoryId, setSelectedCategoryId] = useState<RetouchCategoryId>('aiNative')
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<RetouchTemplateId[]>([])
-  const [selectedGroupName, setSelectedGroupName] = useState<string | null>('AI追色')
+  const [selectedGroupName, setSelectedGroupName] = useState<string | null>('纸刊海报')
   const [selectedStrengthId, setSelectedStrengthId] = useState<RetouchStrengthId>('standard')
   const [selectedTargetId, setSelectedTargetId] = useState<RetouchTargetId>('auto')
   const [generationMode, setGenerationMode] = useState<RetouchGenerationMode>('edit')
@@ -1119,8 +1141,6 @@ export default function RetouchWorkspace() {
     : previewMode === 'history' ? '历史原图' : previewMode === 'current' ? isTextToImageMode ? '生成中' : '输入参考' : '空白画布'
   const previewEmptyHasHistorySelection = previewMode === 'history'
   const currentStatusTask = previewMode === 'current' ? isTextToImageMode ? latestTextTask : latestTaskForCurrentInput : null
-  const runningCount = retouchTasks.filter((task) => task.status === 'running').length
-  const doneCount = retouchTasks.filter((task) => task.status === 'done').length
   const selectedTemplates = selectedTemplateIds
     .map((id) => retouchTemplates.find((template) => template.id === id))
     .filter((template): template is RetouchTemplate => Boolean(template))
@@ -1194,6 +1214,7 @@ export default function RetouchWorkspace() {
     return {
       transform: `translate(${previewPan.x}px, ${previewPan.y}px) scale(${previewZoom})`,
       cursor: previewZoom > 1 ? (previewPanDragging ? 'grabbing' : 'grab') : undefined,
+      transition: previewPanDragging ? 'none' : undefined,
     }
   }, [previewPan.x, previewPan.y, previewPanDragging, previewZoom])
   const handlePreviewImageMeasure = (aspectRatio: number) => {
@@ -1479,43 +1500,31 @@ export default function RetouchWorkspace() {
   const promptPlaceholder = isTextToImageMode
     ? '直接描述要生成的画面、主体、风格、镜头、光线、构图和比例。例：商业棚拍质感的护肤品海报，白色背景，柔和侧光，干净高级。'
     : '直接描述要修哪里、强度、必须保留什么。例：保留人物身份和镜框结构，去掉皮肤瑕疵，肤色更干净自然。'
-  const submitLabel = apiIssue ? '配置 API' : isTextToImageMode ? '提交生成' : maskDraft ? '提交局部修图' : '提交修图'
+  const submitLabel = apiIssue ? '连接 API' : isTextToImageMode ? '生成图像' : maskDraft ? '开始局部修图' : '开始修图'
   const historyTitle = isTextToImageMode ? '生成历史' : '修图历史'
   const currentPromptFallback = isTextToImageMode
     ? '写清楚主体、场景、风格、构图、色彩、比例和不想出现的内容。'
     : '先选择一个修图预设，或者在右侧输入框直接写修图要求。'
 
   return (
-    <section data-no-drag-select className="retouch-workspace safe-area-x">
+    <section data-no-drag-select aria-label="AIPic 图像工作室" className="retouch-workspace safe-area-x">
       <div className="retouch-studio-shell">
-        <header className="retouch-studio-header">
-          <div className="retouch-studio-title">
-            <h2>AI 专业修图工作台</h2>
-            <div className="retouch-studio-status-row">
-              <span className={apiIssue ? 'is-warning' : 'is-ready'}>{apiIssue ? `API 未完成：${apiIssue}` : 'API 已就绪'}</span>
-              <span>{activeProfile.model || '未设置模型'}</span>
-              <span>{isTextToImageMode ? '文生图模式' : `${inputImages.length} 张输入图`}</span>
-              <span>{runningCount ? `${runningCount} 个任务生成中` : `${doneCount} 个结果`}</span>
-            </div>
-          </div>
-          <div className="retouch-studio-hint">{isTextToImageMode ? '输入画面描述后直接生成' : '选择预设后在右侧确认要求并提交'}</div>
-        </header>
-
         <div className="retouch-studio-body">
           <aside className="retouch-workflow-panel">
-            <div className="retouch-api-card">
+            <button type="button" className="retouch-api-card" onClick={() => setShowSettings(true, 'api')} title={requestBaseUrl} aria-label={`当前模型 ${activeProfile.model || '未设置'}，打开 API 设置`}>
               <div>
-                <span>当前请求地址</span>
-                <strong className="retouch-api-url" title={requestBaseUrl}>{getApiDisplayLabel(requestBaseUrl)}</strong>
-                {requestBaseUrl !== '未填写 API 地址' && <small>/v1 接口</small>}
+                <span>当前模型</span>
+                <strong className="retouch-api-url">{activeProfile.model || '选择模型'}</strong>
+                <small>{apiIssue ? '完成连接后开始创作' : getApiDisplayLabel(requestBaseUrl)}</small>
               </div>
-            </div>
+              <SettingsIcon className="h-4 w-4" aria-hidden="true" />
+            </button>
 
             <div className="retouch-left-body">
-              <nav className="retouch-primary-menu" aria-label="一级功能菜单">
+              <nav className="retouch-primary-menu" aria-label="修图工具">
                 <div className="retouch-primary-title">
                   <span>工具</span>
-                  <strong>{selectedConfigCount ? `${selectedConfigCount} 项` : '未选择'}</strong>
+                  <strong>{selectedConfigCount ? `已选 ${selectedConfigCount} 项` : '探索'}</strong>
                 </div>
                 <div className="retouch-category-grid">
                   {retouchCategories.map((category) => {
@@ -1527,7 +1536,8 @@ export default function RetouchWorkspace() {
                         key={category.id}
                         type="button"
                         className={`retouch-category-button ${active ? 'is-active' : ''}`}
-                        aria-label={`${category.title}${selectedCount ? `，已选 ${selectedCount} 项` : ''}`}
+                        aria-label={`${category.title}${category.id === 'aiNative' ? '，新增纸刊海报预设' : ''}${selectedCount ? `，已选 ${selectedCount} 项` : ''}`}
+                        aria-pressed={active}
                         onClick={() => {
                           setSelectedCategoryId(category.id)
                           const ids = categoryTemplateAliases[category.id] ?? [category.id]
@@ -1535,10 +1545,11 @@ export default function RetouchWorkspace() {
                           setSelectedGroupName(firstTemplate?.group ?? null)
                         }}
                       >
-                        <Icon className="h-4 w-4" />
+                        <Icon className="h-4 w-4" aria-hidden="true" />
                         <span className="retouch-category-copy">
                           <span className="retouch-category-title">
                             <span className="retouch-category-name">{category.shortTitle}</span>
+                            {category.id === 'aiNative' && <span className="retouch-new-badge" aria-hidden="true">NEW</span>}
                           </span>
                           <small className="retouch-category-summary">{category.summary}</small>
                         </span>
@@ -1552,14 +1563,14 @@ export default function RetouchWorkspace() {
               <div className="retouch-secondary-menu">
                 <div className="retouch-secondary-head">
                   <div>
-                    <span>当前功能</span>
+                    <span>创作工具</span>
                     <strong>{selectedCategory.title}</strong>
                   </div>
                   <small>{selectedCategory.summary}</small>
                 </div>
 
                 <div className="retouch-template-list">
-                  <div className="retouch-group-tabs" aria-label="小功能分组">
+                  <div className="retouch-group-tabs" role="group" aria-label="小功能分组">
                     {groupedCategoryTemplates.map((group) => {
                       const groupSelectedCount = getGroupSelectionCount(group.templates)
                       return (
@@ -1567,6 +1578,7 @@ export default function RetouchWorkspace() {
                           key={group.group}
                           type="button"
                           className={activeGroupName === group.group ? 'is-active' : ''}
+                          aria-pressed={activeGroupName === group.group}
                           onClick={() => setSelectedGroupName(group.group)}
                         >
                           <span>{group.group}</span>
@@ -1590,6 +1602,11 @@ export default function RetouchWorkspace() {
                             aria-pressed={isSelected}
                           >
                             <span className="retouch-template-card-title">
+                              {template.composition === 'poster' && (
+                                <span className="retouch-template-card-icon">
+                                  <StudioSymbol name={template.id === 'editorial-photo-echo' ? 'panels' : template.id === 'editorial-quiet-zine' ? 'minimal' : 'collage'} className="h-5 w-5" />
+                                </span>
+                              )}
                               <strong>{template.title}</strong>
                               {isSelected && <span className="retouch-selected-mark">已选</span>}
                             </span>
@@ -1602,7 +1619,7 @@ export default function RetouchWorkspace() {
                 </div>
 
                 <div className="retouch-section-heading">
-                  <span>执行设置</span>
+                  <span>调整</span>
                   <strong>{selectedStrength.label} · {selectedTarget.label}</strong>
                 </div>
                 <div className="retouch-option-panel">
@@ -1614,6 +1631,7 @@ export default function RetouchWorkspace() {
                             key={option.id}
                             type="button"
                             className={selectedStrengthId === option.id ? 'is-active' : ''}
+                            aria-pressed={selectedStrengthId === option.id}
                             onClick={() => applyStrength(option.id)}
                           >
                             {option.label}
@@ -1629,6 +1647,7 @@ export default function RetouchWorkspace() {
                             key={option.id}
                             type="button"
                             className={selectedTargetId === option.id ? 'is-active' : ''}
+                            aria-pressed={selectedTargetId === option.id}
                             onClick={() => applyTarget(option.id)}
                           >
                             {option.label}
@@ -1644,14 +1663,15 @@ export default function RetouchWorkspace() {
           <main className="retouch-preview-panel">
             <div className="retouch-preview-toolbar">
               <div>
-                <span>画面预览</span>
+                <span>画布</span>
                 <strong>{previewTitle}</strong>
               </div>
               <div className="retouch-preview-actions">
-                <div className="retouch-zoom-control" aria-label="预览缩放">
+                <div className="retouch-zoom-control" role="group" aria-label="预览缩放">
                   <button
                     type="button"
                     className={Math.abs(previewZoom - 1) < 0.01 ? 'is-active' : ''}
+                    aria-pressed={Math.abs(previewZoom - 1) < 0.01}
                     onClick={() => applyPreviewZoom(1)}
                     disabled={!canUsePreviewZoom}
                   >
@@ -1673,14 +1693,19 @@ export default function RetouchWorkspace() {
                   type="button"
                   className={`retouch-tool-button ${compareEnabled && canCompare ? 'is-active' : ''}`}
                   onClick={handleCompareToggle}
+                  aria-pressed={compareEnabled && canCompare}
+                  title="对比原图与结果"
                 >
-                  {compareEnabled && canCompare ? '关闭对比' : '前后对比'}
+                  <StudioSymbol name="compare" className="h-4 w-4" />
+                  <span>对比</span>
                 </button>
-                <button type="button" className="retouch-tool-button" onClick={handleMaskEdit}>
-                  涂抹遮罩
+                <button type="button" className="retouch-tool-button" onClick={handleMaskEdit} title="涂抹需要修改的区域">
+                  <EditIcon className="h-4 w-4" aria-hidden="true" />
+                  <span>局部</span>
                 </button>
-                <button type="button" className="retouch-tool-button" onClick={openVisibleOutput} disabled={!visibleTask?.outputImages.length}>
-                  查看大图
+                <button type="button" className="retouch-tool-button" onClick={openVisibleOutput} disabled={!visibleTask?.outputImages.length} title="查看完整输出图">
+                  <StudioSymbol name="expand" className="h-4 w-4" />
+                  <span>放大</span>
                 </button>
               </div>
             </div>
@@ -1737,7 +1762,21 @@ export default function RetouchWorkspace() {
                       type="button"
                       className="retouch-compare-handle"
                       style={{ left: `${comparePosition}%` }}
-                      aria-label="拖动对比线"
+                      role="slider"
+                      aria-label="原图与结果对比位置"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(comparePosition)}
+                      aria-valuetext={`原图显示 ${Math.round(comparePosition)}%`}
+                      onKeyDown={(event) => {
+                        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                          event.preventDefault()
+                          setComparePosition((position) => Math.min(100, Math.max(0, position + (event.key === 'ArrowRight' ? 5 : -5))))
+                        } else if (event.key === 'Home' || event.key === 'End') {
+                          event.preventDefault()
+                          setComparePosition(event.key === 'Home' ? 0 : 100)
+                        }
+                      }}
                       onPointerDown={handleComparePointerDown}
                       onPointerMove={handleComparePointerMove}
                       onPointerUp={handleComparePointerEnd}
@@ -1749,6 +1788,7 @@ export default function RetouchWorkspace() {
                 ) : outputImageSrc ? (
                   <div
                     className="retouch-preview-pan-layer"
+                    style={{ touchAction: previewZoom > 1 ? 'none' : 'pan-y pinch-zoom' }}
                     onWheel={handlePreviewWheel}
                     onPointerDown={handlePreviewPanPointerDown}
                     onPointerMove={handlePreviewPanPointerMove}
@@ -1766,6 +1806,7 @@ export default function RetouchWorkspace() {
                 ) : beforeImageSrc ? (
                   <div
                     className="retouch-preview-pan-layer"
+                    style={{ touchAction: previewZoom > 1 ? 'none' : 'pan-y pinch-zoom' }}
                     onWheel={handlePreviewWheel}
                     onPointerDown={handlePreviewPanPointerDown}
                     onPointerMove={handlePreviewPanPointerMove}
@@ -1788,8 +1829,8 @@ export default function RetouchWorkspace() {
                   />
                 )}
               </div>
-              {currentStatusTask?.status === 'running' && <div className="retouch-running-badge">生成中</div>}
-              {visibleTask?.status === 'error' && <div className="retouch-error-badge">生成失败</div>}
+              {currentStatusTask?.status === 'running' && <div className="retouch-running-badge" role="status"><span className="retouch-progress-dot" aria-hidden="true" />正在生成</div>}
+              {visibleTask?.status === 'error' && <div className="retouch-error-badge" role="status">生成失败</div>}
               {hasPreviewImage && <div className="retouch-fit-badge">{previewZoom > 1 ? `${Math.round(previewZoom * 100)}%` : '完整显示'}</div>}
               {hasPreviewImage && (
                 <button
@@ -1797,7 +1838,8 @@ export default function RetouchWorkspace() {
                   className="retouch-preview-upload-float"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  上传参考图
+                  <PhotoIcon className="h-4 w-4" aria-hidden="true" />
+                  添加照片
                 </button>
               )}
             </div>
@@ -1816,16 +1858,22 @@ export default function RetouchWorkspace() {
               void handleFiles(event.dataTransfer.files)
             }}
           >
-            <div className="retouch-section-heading">
-              <span>主交互区</span>
-              <strong>{isTextToImageMode ? '文生图' : maskDraft ? '遮罩编辑' : params.n > 1 ? `${params.n} 张输出` : '单张输出'}</strong>
+            <div className="retouch-section-heading retouch-control-heading">
+              <span>创作设置</span>
+              <div className="retouch-control-heading-actions">
+                <strong>{isTextToImageMode ? '文生图' : maskDraft ? '遮罩编辑' : params.n > 1 ? `${params.n} 张输出` : '单张输出'}</strong>
+                <button type="button" className="apple-icon-button retouch-panel-settings" onClick={() => setShowSettings(true, 'api')} aria-label="打开设置" title="设置">
+                  <SettingsIcon className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </div>
             </div>
             <div className="retouch-side-submit">
-              <div className="retouch-segment-group retouch-mode-switch" aria-label="生成模式">
+              <div className="retouch-segment-group retouch-mode-switch" role="group" aria-label="生成模式">
                 <span>模式</span>
                 <button
                   type="button"
                   className={isTextToImageMode ? 'is-active' : ''}
+                  aria-pressed={isTextToImageMode}
                   onClick={() => switchGenerationMode('text')}
                 >
                   <strong>文生图</strong>
@@ -1834,6 +1882,7 @@ export default function RetouchWorkspace() {
                 <button
                   type="button"
                   className={isImageEditMode ? 'is-active' : ''}
+                  aria-pressed={isImageEditMode}
                   onClick={() => switchGenerationMode('edit')}
                 >
                   <strong>图生图</strong>
@@ -1874,7 +1923,7 @@ export default function RetouchWorkspace() {
               )}
               <button type="button" className="retouch-mask-button" onClick={handleMaskEdit}>
                 <EditIcon className="h-4 w-4" />
-                <span>{isTextToImageMode ? '文生图无需 mask' : maskDraft ? '继续涂抹遮罩' : '涂抹指定区域生成 mask'}</span>
+                <span>{isTextToImageMode ? '切换修图后可使用局部编辑' : maskDraft ? '编辑已选区域' : '选择局部编辑区域'}</span>
               </button>
               <label className="retouch-prompt-field">
                 <span>{promptFieldLabel}</span>
@@ -1885,17 +1934,19 @@ export default function RetouchWorkspace() {
                     setPrompt(event.target.value)
                   }}
                   placeholder={promptPlaceholder}
+                  spellCheck={false}
                   rows={5}
                 />
               </label>
               <div className="retouch-submit-controls">
-                <div className="retouch-segment-group" aria-label="输出数量">
+                <div className="retouch-segment-group" role="group" aria-label="输出数量">
                   <span>数量</span>
                   {[1, 4].map((count) => (
                     <button
                       key={count}
                       type="button"
                       className={params.n === count ? 'is-active' : ''}
+                      aria-pressed={params.n === count}
                       onClick={() => setParams({ n: count })}
                     >
                       {count === 1 ? '1 张' : '4 版'}
@@ -1903,7 +1954,7 @@ export default function RetouchWorkspace() {
                   ))}
                 </div>
 
-                <div className="retouch-segment-group" aria-label="输出尺寸">
+                <div className="retouch-segment-group" role="group" aria-label="输出尺寸">
                   <span>尺寸</span>
                   {outputSizeOptions.map((option) => (
                     <button
@@ -1911,6 +1962,7 @@ export default function RetouchWorkspace() {
                       type="button"
                       title={option.value === 'auto' ? '由模型自动判断输出尺寸' : `${option.label} · ${option.value}`}
                       className={activeOutputSizeId === option.id ? 'is-active' : ''}
+                      aria-pressed={activeOutputSizeId === option.id}
                       onClick={() => {
                         setParams({ size: option.value })
                         showToast(
@@ -1927,7 +1979,7 @@ export default function RetouchWorkspace() {
                   ))}
                 </div>
 
-                <div className="retouch-segment-group" aria-label="修图质量">
+                <div className="retouch-segment-group" role="group" aria-label="修图质量">
                   <span>质量</span>
                   {qualityOptions.map((option) => (
                     <button
@@ -1935,6 +1987,7 @@ export default function RetouchWorkspace() {
                       type="button"
                       title={option.hint}
                       className={params.quality === option.value ? 'is-active' : ''}
+                      aria-pressed={params.quality === option.value}
                       onClick={() => setParams({ quality: option.value })}
                     >
                       <strong>{option.label}</strong>
@@ -1943,13 +1996,14 @@ export default function RetouchWorkspace() {
                   ))}
                 </div>
 
-                <div className="retouch-segment-group" aria-label="交付格式">
+                <div className="retouch-segment-group" role="group" aria-label="交付格式">
                   <span>格式</span>
                   {formatOptions.map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       className={params.output_format === option.value ? 'is-active' : ''}
+                      aria-pressed={params.output_format === option.value}
                       onClick={() => setParams({ output_format: option.value })}
                     >
                       {option.label}
@@ -1958,7 +2012,9 @@ export default function RetouchWorkspace() {
                 </div>
 
                 <button type="button" className="retouch-submit-button" onClick={handleSubmit}>
-                  {submitLabel}
+                  <StudioSymbol name="sparkles" className="h-4 w-4" />
+                  <span>{submitLabel}</span>
+                  <StudioSymbol name="arrow" className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -1989,6 +2045,7 @@ export default function RetouchWorkspace() {
                     key={task.id}
                     type="button"
                     className={`retouch-history-card ${selectedHistoryTaskId === task.id ? 'is-active' : ''}`}
+                    aria-pressed={selectedHistoryTaskId === task.id}
                     onClick={() => {
                       setCompareEnabled(false)
                       setSelectedHistoryTaskId(task.id)
@@ -2003,7 +2060,7 @@ export default function RetouchWorkspace() {
                   </button>
                 ))
               ) : (
-                <div className="retouch-empty-history">{isTextToImageMode ? '提交生成后自动记录历史' : '提交修图后自动记录历史'}</div>
+                <div className="retouch-empty-history">每一次创作，都会保存在这里。</div>
               )}
             </div>
 
@@ -2040,7 +2097,7 @@ export default function RetouchWorkspace() {
               ) : (
                 <div className="retouch-empty-result">
                   <SettingsIcon className="h-4 w-4" />
-                  <span>提交后这里显示真实结果</span>
+                  <span>你的作品将显示在这里</span>
                 </div>
               )}
             </div>

@@ -1115,27 +1115,30 @@ export default function SettingsModal() {
   return (
         <div data-no-drag-select className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/30 backdrop-blur-sm animate-overlay-in"
+        className="apple-dialog-backdrop absolute inset-0 animate-overlay-in"
         onClick={handleClose}
       />
       <div
         ref={settingsScrollBoundaryRef}
-        className="retouch-settings-modal relative z-10 flex h-[calc(100vh-2rem)] max-h-[860px] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/50 bg-white/95 shadow-2xl ring-1 ring-black/5 animate-modal-in dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="apple-settings-title"
+        className="apple-settings retouch-settings-modal relative z-10 flex h-[calc(100dvh-2rem)] max-h-[860px] w-full max-w-4xl flex-col overflow-hidden animate-modal-in"
       >
         {/* Header */}
-        <div className="flex items-center justify-between shrink-0 p-5 border-b border-gray-100 dark:border-white/[0.08]">
-          <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+        <div className="apple-settings-header flex shrink-0 items-center justify-between gap-4 px-6 py-4">
+          <h3 id="apple-settings-title" className="flex items-center gap-3 text-lg font-semibold tracking-tight">
             <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.65} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.65} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             设置
           </h3>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-400 dark:text-gray-500 font-mono select-none">v{__APP_VERSION__}</span>
+            <span className="text-xs text-[var(--apple-secondary)] tabular-nums select-none">v{__APP_VERSION__}</span>
             <button
               onClick={handleClose}
-              className="rounded-full p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/[0.06] dark:hover:text-gray-200"
+              className="apple-icon-button"
               aria-label="关闭"
             >
               <CloseIcon className="h-5 w-5" />
@@ -1145,52 +1148,67 @@ export default function SettingsModal() {
 
         <div className="flex flex-1 min-h-0 flex-col sm:flex-row">
           {/* Sidebar */}
-          <div className="w-full sm:w-48 shrink-0 flex flex-col border-b sm:border-b-0 sm:border-r border-gray-100 dark:border-white/[0.08] bg-gray-50/50 dark:bg-white/[0.02]">
-            <nav className="flex-1 overflow-x-auto sm:overflow-y-auto custom-scrollbar p-3 space-x-1 sm:space-x-0 sm:space-y-1 flex sm:flex-col">
+          <div className="apple-settings-sidebar flex w-full shrink-0 flex-col sm:w-52">
+            <nav aria-label="设置分类" role="tablist" className="apple-settings-nav custom-scrollbar flex flex-1 gap-1 overflow-x-auto p-3 sm:flex-col sm:overflow-y-auto">
               <button
                 onClick={() => setActiveTab('api')}
-                className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'api' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
+                role="tab"
+                aria-selected={activeTab === 'api'}
+                aria-controls="apple-settings-panel"
+                className="apple-settings-tab flex shrink-0 items-center gap-3 px-3 py-3 text-sm"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.65} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                 </svg>
                 API 配置
               </button>
               {!retouchOnlySettings && <button
                 onClick={() => setActiveTab('general')}
-                className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'general' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
+                role="tab"
+                aria-selected={activeTab === 'general'}
+                aria-controls="apple-settings-panel"
+                className="apple-settings-tab flex shrink-0 items-center gap-3 px-3 py-3 text-sm"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.65} d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
                 </svg>
                 习惯配置
               </button>}
               {!retouchOnlySettings && <button
                 onClick={() => setActiveTab('agent')}
-                className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'agent' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
+                role="tab"
+                aria-selected={activeTab === 'agent'}
+                aria-controls="apple-settings-panel"
+                className="apple-settings-tab flex shrink-0 items-center gap-3 px-3 py-3 text-sm"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8V4H8" />
-                  <rect width="16" height="12" x="4" y="8" rx="2" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 14h2M20 14h2M15 13v2M9 13v2" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.65} d="M12 8V4H8" />
+                  <rect width="16" height="12" x="4" y="8" rx="2" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.65} />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.65} d="M2 14h2M20 14h2M15 13v2M9 13v2" />
                 </svg>
                 Agent 配置
               </button>}
               {!retouchOnlySettings && <button
                 onClick={() => setActiveTab('data')}
-                className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'data' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
+                role="tab"
+                aria-selected={activeTab === 'data'}
+                aria-controls="apple-settings-panel"
+                className="apple-settings-tab flex shrink-0 items-center gap-3 px-3 py-3 text-sm"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.65} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
                 </svg>
                 数据管理
               </button>}
               {!retouchOnlySettings && <button
                 onClick={() => setActiveTab('about')}
-                className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'about' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
+                role="tab"
+                aria-selected={activeTab === 'about'}
+                aria-controls="apple-settings-panel"
+                className="apple-settings-tab flex shrink-0 items-center gap-3 px-3 py-3 text-sm"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.65} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 关于
               </button>}
@@ -1198,10 +1216,10 @@ export default function SettingsModal() {
           </div>
 
           {/* Content */}
-          <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-transparent relative overflow-hidden">
-            <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-4 sm:p-5">
+          <div id="apple-settings-panel" role="tabpanel" className="apple-settings-content relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="apple-settings-scroll custom-scrollbar flex-1 overflow-y-auto overscroll-contain p-5 sm:p-8">
             {activeTab === 'general' && (
-              <div className="space-y-4">
+              <div className="apple-settings-group space-y-6">
                 <div className="hidden sm:block">
                   <div className="mb-1 flex items-center justify-between">
                     <span className="block text-sm text-gray-600 dark:text-gray-300">任务提交方式</span>
@@ -1213,7 +1231,7 @@ export default function SettingsModal() {
                           { label: 'Enter', value: 'enter' },
                           { label: navigator.userAgent.includes('Mac') ? 'Cmd + Enter' : 'Ctrl + Enter', value: 'ctrl-enter' }
                         ]}
-                        className="w-full px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] hover:bg-white dark:hover:bg-white/[0.06] text-xs transition-all duration-200 shadow-sm text-gray-700 dark:text-gray-200 outline-none"
+                        className="apple-settings-input w-full text-sm"
                       />
                     </div>
                   </div>
@@ -1227,12 +1245,12 @@ export default function SettingsModal() {
                     <button
                       type="button"
                       onClick={() => commitSettings({ ...draft, clearInputAfterSubmit: !draft.clearInputAfterSubmit })}
-                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${draft.clearInputAfterSubmit ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                      className="apple-switch"
                       role="switch"
                       aria-checked={draft.clearInputAfterSubmit}
                       aria-label="提交任务后清空输入框"
                     >
-                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${draft.clearInputAfterSubmit ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+                      <span className="apple-switch-thumb" />
                     </button>
                   </div>
                   <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
@@ -1251,7 +1269,7 @@ export default function SettingsModal() {
                           { label: '替换参考图', value: 'replace-reference' },
                           { label: '添加遮罩', value: 'add-mask' },
                         ]}
-                        className="w-full px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] hover:bg-white dark:hover:bg-white/[0.06] text-xs transition-all duration-200 shadow-sm text-gray-700 dark:text-gray-200 outline-none"
+                        className="apple-settings-input w-full text-sm"
                       />
                     </div>
                   </div>
@@ -1265,12 +1283,12 @@ export default function SettingsModal() {
                     <button
                       type="button"
                       onClick={() => commitSettings({ ...draft, persistInputOnRestart: !draft.persistInputOnRestart })}
-                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${draft.persistInputOnRestart ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                      className="apple-switch"
                       role="switch"
                       aria-checked={draft.persistInputOnRestart}
                       aria-label="重启后加载上次的输入框"
                     >
-                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${draft.persistInputOnRestart ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+                      <span className="apple-switch-thumb" />
                     </button>
                   </div>
                   <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
@@ -1283,12 +1301,12 @@ export default function SettingsModal() {
                     <button
                       type="button"
                       onClick={() => commitSettings({ ...draft, reuseTaskApiProfileTemporarily: !draft.reuseTaskApiProfileTemporarily })}
-                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${draft.reuseTaskApiProfileTemporarily ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                      className="apple-switch"
                       role="switch"
                       aria-checked={draft.reuseTaskApiProfileTemporarily}
                       aria-label="复用配置时临时复用该任务的 API 配置"
                     >
-                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${draft.reuseTaskApiProfileTemporarily ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+                      <span className="apple-switch-thumb" />
                     </button>
                   </div>
                   <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
@@ -1301,12 +1319,12 @@ export default function SettingsModal() {
                     <button
                       type="button"
                       onClick={() => commitSettings({ ...draft, alwaysShowRetryButton: !draft.alwaysShowRetryButton })}
-                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${draft.alwaysShowRetryButton ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                      className="apple-switch"
                       role="switch"
                       aria-checked={draft.alwaysShowRetryButton}
                       aria-label="成功任务仍然展示重试按钮"
                     >
-                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${draft.alwaysShowRetryButton ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+                      <span className="apple-switch-thumb" />
                     </button>
                   </div>
                   <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
@@ -1319,12 +1337,12 @@ export default function SettingsModal() {
                     <button
                       type="button"
                       onClick={() => commitSettings({ ...draft, agentScrollToBottomAfterSubmit: !draft.agentScrollToBottomAfterSubmit })}
-                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${draft.agentScrollToBottomAfterSubmit ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                      className="apple-switch"
                       role="switch"
                       aria-checked={draft.agentScrollToBottomAfterSubmit}
                       aria-label="发送消息后自动滚动到底部"
                     >
-                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${draft.agentScrollToBottomAfterSubmit ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+                      <span className="apple-switch-thumb" />
                     </button>
                   </div>
                   <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
@@ -1335,7 +1353,7 @@ export default function SettingsModal() {
             )}
 
             {activeTab === 'agent' && (
-              <div className="space-y-4">
+              <div className="apple-settings-group space-y-6">
                 <label className="block">
                   <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">最大工具调用轮数</span>
                   <input
@@ -1345,7 +1363,7 @@ export default function SettingsModal() {
                     type="number"
                     min={1}
                     max={50}
-                    className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+                    className="apple-settings-input w-full text-sm"
                   />
                   <div data-selectable-text className="mt-1.5 text-xs leading-relaxed text-gray-500 dark:text-gray-500">
                     默认 15。用于限制 Agent 连续调用工具时的最大轮数，防止无限循环。
@@ -1363,12 +1381,12 @@ export default function SettingsModal() {
                         setAgentMaxToolRoundsInput(String(agentMaxToolRounds))
                         commitSettings({ ...draft, agentMaxToolRounds, agentWebSearch: !draft.agentWebSearch })
                       }}
-                      className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${draft.agentWebSearch ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                      className="apple-switch"
                       role="switch"
                       aria-checked={draft.agentWebSearch}
                       aria-label="网络搜索"
                     >
-                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${draft.agentWebSearch ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+                      <span className="apple-switch-thumb" />
                     </button>
                   </div>
                   <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
@@ -1379,21 +1397,21 @@ export default function SettingsModal() {
             )}
             
             {activeTab === 'api' && (
-              <div className="space-y-3">
-                <div className="rounded-2xl border border-blue-100 bg-blue-50/70 px-3.5 py-2.5 text-[13px] leading-relaxed text-blue-900 dark:border-blue-400/15 dark:bg-blue-500/10 dark:text-blue-200">
+              <div className="apple-settings-group space-y-5">
+                <div className="apple-settings-notice px-4 py-4 text-[13px] leading-relaxed">
                   <div className="font-semibold">常用接入只需要 4 项</div>
-                  <div className="mt-1 text-blue-800/80 dark:text-blue-200/75">
+                  <div className="mt-1 text-[var(--apple-secondary)]">
                     选择配置，填写 API 地址和密钥，再确认模型 ID。其他选项放在高级设置里。
                   </div>
                 </div>
 
-              <div className="rounded-2xl border border-gray-200/70 bg-white/70 p-3.5 dark:border-white/[0.08] dark:bg-white/[0.03]">
+              <div className="apple-settings-card p-4">
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-200">当前配置</span>
                   <button
                     type="button"
                     onClick={createNewProfile}
-                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 transition hover:border-blue-300 hover:text-blue-600 dark:border-white/[0.1] dark:bg-white/[0.05] dark:text-gray-300 dark:hover:border-blue-400/40 dark:hover:text-blue-300"
+                    className="apple-button text-xs" data-tone="secondary"
                   >
                     <PlusIcon className="h-3.5 w-3.5" />
                     新建配置
@@ -1406,24 +1424,24 @@ export default function SettingsModal() {
                     label: `${profile.name} · ${profile.model}`,
                     value: profile.id,
                   }))}
-                  className="w-full rounded-xl border border-gray-200/80 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-white/[0.1] dark:bg-white/[0.06] dark:text-gray-100 dark:focus:border-blue-400/60 dark:focus:ring-blue-500/20"
+                  className="apple-settings-input w-full text-sm"
                 />
               </div>
 
-              <div className="rounded-2xl border border-cyan-200/80 bg-cyan-50/70 p-3.5 dark:border-cyan-400/20 dark:bg-cyan-500/[0.08]">
+              <div className="apple-settings-preset p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-cyan-950 dark:text-cyan-100">Grok Imagine</span>
-                      <span className="rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800 dark:bg-cyan-400/15 dark:text-cyan-200">预设</span>
+                      <span className="text-sm font-semibold text-[var(--apple-ink)]">Grok Imagine</span>
+                      <span className="rounded-md bg-[var(--apple-accent-soft)] px-2 py-1 text-[10px] font-semibold text-[var(--apple-accent-text)]">预设</span>
                     </div>
-                    <div className="mt-1 truncate font-mono text-xs text-cyan-800/75 dark:text-cyan-200/70">{DEFAULT_GROK_MODEL}</div>
-                    <div className="mt-1 text-xs text-cyan-800/70 dark:text-cyan-200/65">非流式 · Base64 图片数据</div>
+                    <div className="mt-1 truncate font-mono text-xs text-[var(--apple-secondary)]">{DEFAULT_GROK_MODEL}</div>
+                    <div className="mt-1 text-xs text-[var(--apple-secondary)]">非流式 · Base64 图片数据</div>
                   </div>
                   <button
                     type="button"
                     onClick={applyGrokPreset}
-                    className="shrink-0 rounded-xl bg-cyan-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-700 dark:bg-cyan-500 dark:text-cyan-950 dark:hover:bg-cyan-400"
+                    className="apple-button shrink-0" data-tone="primary"
                   >
                     {activeProfile.provider === 'openai' && activeProfile.model === DEFAULT_GROK_MODEL ? '重新应用' : '使用预设'}
                   </button>
@@ -1438,13 +1456,13 @@ export default function SettingsModal() {
                   onChange={handleProviderTypeChange}
                   onReorder={handleProviderReorder}
                   options={providerOptions}
-                  className="w-full rounded-xl border border-gray-200/80 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-white/[0.1] dark:bg-white/[0.06] dark:text-gray-100 dark:focus:border-blue-400/60 dark:focus:ring-blue-500/20"
+                  className="apple-settings-input w-full text-sm"
                 />
               </div>
 
               {/* 3. API URL */}
               {activeProviderUsesApiUrl && (
-                <label className="retouch-settings-api-card block">
+                <label className="apple-settings-field block">
                   <div className="mb-1.5 flex items-center justify-between">
                     <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">API 地址</span>
                   </div>
@@ -1454,7 +1472,7 @@ export default function SettingsModal() {
                     onBlur={(e) => commitActiveProfilePatch(getBaseUrlPatch(e.target.value))}
                     type="text"
                     placeholder={activeProfile.provider === 'fal' ? DEFAULT_FAL_BASE_URL : DEFAULT_SETTINGS.baseUrl}
-                    className="retouch-settings-api-input w-full rounded-xl border px-3 py-2.5 font-mono text-sm font-semibold shadow-sm outline-none transition focus:ring-2"
+                    className="apple-settings-input w-full text-sm font-mono"
                   />
                 </label>
               )}
@@ -1469,22 +1487,22 @@ export default function SettingsModal() {
                     onBlur={(e) => commitActiveProfilePatch({ apiKey: e.target.value })}
                     type={showApiKey ? 'text' : 'password'}
                     placeholder={activeProfile.provider === 'fal' ? 'FAL_KEY' : 'sk-...'}
-                    className="w-full rounded-xl border border-gray-200/80 bg-white px-3 py-2.5 pr-10 font-mono text-sm text-gray-950 shadow-sm outline-none transition placeholder:text-gray-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-white/[0.1] dark:bg-white/[0.06] dark:text-gray-50 dark:placeholder:text-gray-500 dark:focus:border-blue-400/60 dark:focus:ring-blue-500/20"
+                    className="apple-settings-input w-full text-sm font-mono pr-12"
                   />
                   <button
                     type="button"
                     onClick={() => setShowApiKey((v) => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-gray-100"
+                    className="apple-icon-button absolute right-0.5 top-1/2 -translate-y-1/2"
                     tabIndex={-1}
                     aria-label={showApiKey ? '隐藏 API 密钥' : '显示 API 密钥'}
                   >
                     {showApiKey ? (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.65} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                         <circle cx="12" cy="12" r="3" />
                       </svg>
                     ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.65} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                         <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
                         <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
                         <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
@@ -1516,7 +1534,7 @@ export default function SettingsModal() {
                       { label: '修图/生图：Images API', value: 'images' },
                       { label: '助手对话：Responses API', value: 'responses' },
                     ]}
-                    className="w-full rounded-xl border border-gray-200/80 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-white/[0.1] dark:bg-white/[0.06] dark:text-gray-100 dark:focus:border-blue-400/60 dark:focus:ring-blue-500/20"
+                    className="apple-settings-input w-full text-sm"
                   />
                   <div data-selectable-text className="mt-1 text-xs text-gray-600 dark:text-gray-400">
                     修图选 Images API。
@@ -1525,20 +1543,20 @@ export default function SettingsModal() {
               )}
 
               {/* 4. 模型 ID（紧跟接口选择） */}
-              <label className="retouch-settings-model-card block">
-                <span className="retouch-settings-model-label">
+              <label className="apple-settings-field block">
+                <span className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm font-medium">
                   <span>模型 ID</span>
-                  <small>当前请求会使用这个模型</small>
+                  <small className="text-xs font-normal text-[var(--apple-secondary)]">当前请求会使用这个模型</small>
                 </span>
-                <div className="retouch-settings-model-input-shell">
-                  <span>MODEL</span>
+                <div className="relative">
+                  <span aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium tracking-wide text-[var(--apple-secondary)]">MODEL</span>
                   <input
                     value={activeProfile.model}
                     onChange={(e) => updateActiveProfile({ model: e.target.value })}
                     onBlur={(e) => commitActiveProfilePatch({ model: e.target.value })}
                     type="text"
                     placeholder={activeProfile.provider === 'fal' ? DEFAULT_FAL_MODEL : getDefaultModelForMode(activeProfile.apiMode ?? DEFAULT_SETTINGS.apiMode)}
-                    className="retouch-settings-model-input"
+                    className="apple-settings-input w-full pr-16 font-mono text-sm"
                   />
                 </div>
                 <div data-selectable-text className="mt-1 text-xs text-gray-600 dark:text-gray-400">
@@ -1557,7 +1575,7 @@ export default function SettingsModal() {
               </label>
 
               {(activeProfile.provider === 'openai' || activeProviderIsOpenAICompatible) && (
-                <div className="rounded-2xl border border-gray-200/70 bg-white/70 dark:border-white/[0.08] dark:bg-white/[0.03]">
+                <div className="apple-settings-card overflow-hidden">
                   <button
                     type="button"
                     onClick={() => setShowAdvancedApiSettings((value) => !value)}
@@ -1582,12 +1600,12 @@ export default function SettingsModal() {
                           onChange={(e) => updateActiveProfile({ name: e.target.value })}
                           onBlur={(e) => commitActiveProfilePatch({ name: e.target.value })}
                           type="text"
-                          className="w-full rounded-xl border border-gray-200/80 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition placeholder:text-gray-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-white/[0.1] dark:bg-white/[0.06] dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-blue-400/60 dark:focus:ring-blue-500/20"
+                          className="apple-settings-input w-full text-sm"
                         />
                       </label>
 
                       {apiProxyAvailable && activeProviderIsOpenAICompatible && !activeCustomProviderAsync && (
-                        <div className="retouch-settings-forward-card block rounded-2xl border border-gray-100 bg-gray-50/70 p-3 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                        <div className="apple-settings-card block p-4">
                           <div className="mb-1.5 flex items-center justify-between">
                             <span className="block text-sm text-gray-700 dark:text-gray-200">服务端转发</span>
                             <button
@@ -1596,12 +1614,12 @@ export default function SettingsModal() {
                                 if (!apiProxyLocked) updateActiveProfile({ apiProxy: !activeProfile.apiProxy }, true)
                               }}
                               disabled={apiProxyLocked}
-                              className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${apiProxyChecked ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'} ${apiProxyLocked ? 'cursor-not-allowed opacity-70' : ''}`}
+                              className="apple-switch"
                               role="switch"
                               aria-checked={apiProxyChecked}
                               aria-label="服务端转发"
                             >
-                              <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${apiProxyChecked ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+                              <span className="apple-switch-thumb" />
                             </button>
                           </div>
                           <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
@@ -1618,12 +1636,12 @@ export default function SettingsModal() {
                               <button
                                 type="button"
                                 onClick={() => updateActiveProfile({ streamImages: !activeProfile.streamImages }, true)}
-                                className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${activeProfile.streamImages ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                                className="apple-switch"
                                 role="switch"
                                 aria-checked={!!activeProfile.streamImages}
                                 aria-label="流式传输"
                               >
-                                <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${activeProfile.streamImages ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+                                <span className="apple-switch-thumb" />
                               </button>
                             </div>
                             <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
@@ -1642,7 +1660,7 @@ export default function SettingsModal() {
                                 { label: '2 张', value: 2 },
                                 { label: '3 张', value: 3 },
                               ]}
-                              className="w-full rounded-xl border border-gray-200/80 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-white/[0.1] dark:bg-white/[0.06] dark:text-gray-100 dark:focus:border-blue-400/60 dark:focus:ring-blue-500/20"
+                              className="apple-settings-input w-full text-sm"
                             />
                             <div data-selectable-text className="mt-1.5 text-xs text-gray-500 dark:text-gray-500">
                               建议 2 或 3，用于维持长连接；会产生少量额外计费。
@@ -1658,12 +1676,12 @@ export default function SettingsModal() {
                             <button
                               type="button"
                               onClick={() => updateActiveProfile({ responseFormatB64Json: !activeProfile.responseFormatB64Json }, true)}
-                              className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${activeProfile.responseFormatB64Json ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                              className="apple-switch"
                               role="switch"
                               aria-checked={!!activeProfile.responseFormatB64Json}
                               aria-label="返回 Base64 图片数据"
                             >
-                              <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${activeProfile.responseFormatB64Json ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+                              <span className="apple-switch-thumb" />
                             </button>
                           </div>
                           <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
@@ -1679,12 +1697,12 @@ export default function SettingsModal() {
                             <button
                               type="button"
                               onClick={() => updateActiveProfile({ codexCli: !activeProfile.codexCli }, true)}
-                              className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${activeProfile.codexCli ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                              className="apple-switch"
                               role="switch"
                               aria-checked={activeProfile.codexCli}
                               aria-label="Codex CLI 兼容模式"
                             >
-                              <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${activeProfile.codexCli ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+                              <span className="apple-switch-thumb" />
                             </button>
                           </div>
                           <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
@@ -1703,7 +1721,7 @@ export default function SettingsModal() {
                             type="number"
                             min={10}
                             max={MAX_IMAGE_TIMEOUT_SECONDS}
-                            className="w-full rounded-xl border border-gray-200/80 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-white/[0.1] dark:bg-white/[0.06] dark:text-gray-100 dark:focus:border-blue-400/60 dark:focus:ring-blue-500/20"
+                            className="apple-settings-input w-full text-sm"
                           />
                           <span className="mt-1.5 block text-xs text-gray-500 dark:text-gray-500">
                             默认 30 分钟，最多 60 分钟；GPT / Grok 的 4K 任务至少等待 30 分钟。上游网关仍可能提前中断。
@@ -1715,7 +1733,7 @@ export default function SettingsModal() {
                         <button
                           type="button"
                           onClick={duplicateActiveProfile}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200/80 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-300 dark:hover:bg-white/[0.08]"
+                          className="apple-button" data-tone="secondary"
                           aria-label={`复制一份配置「${activeProfile.name}」`}
                         >
                           <CopyIcon className="h-3.5 w-3.5" />
@@ -1724,7 +1742,7 @@ export default function SettingsModal() {
                         <button
                           type="button"
                           onClick={() => confirmCopyProfileImportUrl(activeProfile)}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-blue-200/70 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-100 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/15"
+                          className="apple-button" data-tone="secondary"
                           aria-label={`复制导入配置「${activeProfile.name}」的 URL`}
                         >
                           <LinkIcon className="h-3.5 w-3.5" />
@@ -1739,17 +1757,17 @@ export default function SettingsModal() {
             )}
             
             {activeTab === 'data' && (
-              <div className="space-y-4">
-                <div className="rounded-2xl bg-gray-50/80 p-4 border border-gray-200/60 dark:bg-white/[0.02] dark:border-white/[0.05] flex items-start gap-3">
+              <div className="apple-settings-group space-y-6">
+                <div className="apple-settings-notice flex items-start gap-3 p-4">
                   <svg className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.65} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
                   <div className="text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
                     所有的配置、任务记录和生成的图片均仅保存在您的浏览器本地（除非您使用的服务商存储了它们）。如果您需要清理浏览器站点数据、重置浏览器或使用其他设备，请先导出备份。
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-white/[0.06] dark:bg-white/[0.02] space-y-4 shadow-sm">
+                <div className="apple-settings-card space-y-4 p-5">
                   <div className="flex items-center gap-2 mb-1">
                     <ExportIcon className="w-4 h-4 text-gray-700 dark:text-gray-300" />
                     <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">导出数据</h4>
@@ -1769,13 +1787,13 @@ export default function SettingsModal() {
                   <button
                     onClick={() => exportData({ exportConfig, exportTasks })}
                     disabled={!exportConfig && !exportTasks}
-                    className="w-full rounded-xl bg-gray-100/80 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 disabled:hover:bg-gray-100/80 disabled:hover:text-gray-700 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1] dark:hover:text-white dark:disabled:hover:bg-white/[0.06] dark:disabled:hover:text-gray-300 flex items-center justify-center gap-2"
+                    className="apple-button w-full" data-tone="secondary"
                   >
                     导出所选数据
                   </button>
                 </div>
 
-                <div className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-white/[0.06] dark:bg-white/[0.02] space-y-4 shadow-sm">
+                <div className="apple-settings-card space-y-4 p-5">
                   <div className="flex items-center gap-2 mb-1">
                     <ImportIcon className="w-4 h-4 text-gray-700 dark:text-gray-300" />
                     <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">导入数据</h4>
@@ -1795,7 +1813,7 @@ export default function SettingsModal() {
                   <button
                     onClick={() => importInputRef.current?.click()}
                     disabled={(!importConfig && !importTasks) || isImportingData}
-                    className="w-full rounded-xl bg-gray-100/80 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 disabled:hover:bg-gray-100/80 disabled:hover:text-gray-700 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1] dark:hover:text-white dark:disabled:hover:bg-white/[0.06] dark:disabled:hover:text-gray-300 flex items-center justify-center gap-2"
+                    className="apple-button w-full" data-tone="secondary"
                   >
                     {isImportingData ? (
                       <>
@@ -1818,7 +1836,7 @@ export default function SettingsModal() {
                   />
                 </div>
 
-                <div className="rounded-2xl border border-red-100/50 bg-red-50/30 p-4 dark:border-red-500/10 dark:bg-red-500/5 space-y-4 shadow-sm">
+                <div className="apple-settings-card space-y-4 p-5" data-tone="danger">
                   <div className="flex items-center gap-2 mb-1">
                     <TrashIcon className="w-4 h-4 text-red-500/90 dark:text-red-400" />
                     <h4 className="text-sm font-bold text-red-500/90 dark:text-red-400">清除数据</h4>
@@ -1846,7 +1864,7 @@ export default function SettingsModal() {
                       })
                     }
                     disabled={!clearConfig && !clearTasks}
-                    className="w-full rounded-xl border border-red-200/60 bg-red-50/50 px-4 py-2.5 text-sm font-medium text-red-500 transition-all hover:bg-red-50 hover:border-red-200 hover:text-red-600 disabled:opacity-50 disabled:hover:bg-red-50/50 disabled:hover:border-red-200/60 disabled:hover:text-red-500 dark:border-red-500/15 dark:bg-red-500/5 dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:border-red-500/30 dark:hover:text-red-300 dark:disabled:hover:bg-red-500/5 dark:disabled:hover:border-red-500/15 dark:disabled:hover:text-red-400"
+                    className="apple-button w-full" data-tone="danger"
                   >
                     清空所选数据
                   </button>
@@ -1920,7 +1938,7 @@ export default function SettingsModal() {
                     className="flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-gray-100/80 px-5 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-200 hover:text-gray-900 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1] dark:hover:text-white"
                   >
                     <svg className="h-4 w-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.65} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                     </svg>
                     反馈问题
                   </a>
@@ -1934,11 +1952,11 @@ export default function SettingsModal() {
 
         {showCustomProviderImport && createPortal(
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/30 backdrop-blur-sm animate-overlay-in" onClick={() => {
+            <div className="apple-dialog-backdrop absolute inset-0 animate-overlay-in" onClick={() => {
               setShowCustomProviderImport(false)
               setEditingCustomProviderId(null)
             }} />
-            <div className="relative z-10 w-full max-w-md rounded-3xl border border-white/50 bg-white/95 p-5 shadow-2xl ring-1 ring-black/5 animate-modal-in dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10 flex flex-col h-[85vh] sm:h-[680px] max-h-[90vh] overflow-hidden">
+            <div role="dialog" aria-modal="true" aria-label={editingCustomProviderId ? '编辑自定义服务商' : '创建自定义服务商'} className="apple-dialog apple-settings relative z-10 flex h-[85dvh] max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden p-6 animate-modal-in sm:h-[720px]">
               <div className="mb-5 flex items-center justify-between gap-4 shrink-0">
                 <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">
                   {editingCustomProviderId ? '编辑自定义服务商' : '创建自定义服务商'}
@@ -1950,7 +1968,7 @@ export default function SettingsModal() {
                       setShowCustomProviderImport(false)
                       setEditingCustomProviderId(null)
                     }}
-                    className="rounded-full p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/[0.06] dark:hover:text-gray-200"
+                    className="apple-icon-button"
                     aria-label="关闭"
                   >
                     <CloseIcon className="h-5 w-5" />
@@ -1959,10 +1977,10 @@ export default function SettingsModal() {
               </div>
 
               <div ref={customProviderScrollBoundaryRef} className="flex-1 flex flex-col min-h-0 px-1 -mx-1 pb-2">
-                <div className="mb-6 shrink-0 rounded-2xl bg-gray-50/80 p-4 border border-gray-200/60 dark:bg-white/[0.02] dark:border-white/[0.05]">
+                <div className="apple-settings-card mb-6 shrink-0 p-4">
                   <div className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-gray-800 dark:text-gray-200">
                     <svg className="h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.65} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                     AI 一键生成与导入
                   </div>
@@ -1988,7 +2006,7 @@ export default function SettingsModal() {
                         }}
                         onTouchEnd={clearLlmPromptTooltipTimer}
                         onTouchCancel={clearLlmPromptTooltipTimer}
-                        className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm border border-gray-200/80 transition hover:bg-gray-50 hover:text-gray-900 dark:bg-white/[0.05] dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.08] dark:hover:text-white"
+                        className="apple-button" data-tone="secondary"
                       >
                         <LinkIcon className="h-3.5 w-3.5" />
                         复制生成提示词
@@ -2001,7 +2019,7 @@ export default function SettingsModal() {
                       type="button"
                       onClick={handleCustomProviderJsonPaste}
                       disabled={isImportingJson}
-                      className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm border border-gray-200/80 transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-white/[0.05] dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.08] dark:hover:text-white"
+                      className="apple-button" data-tone="secondary"
                     >
                     {isImportingJson ? (
                       <>
@@ -2025,7 +2043,7 @@ export default function SettingsModal() {
                     value={customProviderForm.json}
                     onChange={(e) => updateCustomProviderForm({ json: e.target.value })}
                     spellCheck={false}
-                    className="flex-1 min-h-[150px] w-full resize-none rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2 font-mono text-xs leading-relaxed text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50 custom-scrollbar"
+                    className="apple-settings-input custom-scrollbar min-h-[150px] w-full flex-1 resize-none px-4 py-3 font-mono text-xs leading-relaxed"
                   />
                 </label>
               </div>
@@ -2043,14 +2061,14 @@ export default function SettingsModal() {
                     setShowCustomProviderImport(false)
                     setEditingCustomProviderId(null)
                   }}
-                  className="rounded-xl bg-gray-100 px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-200 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1]"
+                  className="apple-button" data-tone="secondary"
                 >
                   取消
                 </button>
                 <button
                   type="button"
                   onClick={saveCustomProvider}
-                  className="rounded-xl bg-blue-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600"
+                  className="apple-button" data-tone="primary"
                 >
                   {editingCustomProviderId ? '保存修改' : '创建并使用'}
                 </button>
@@ -2060,7 +2078,7 @@ export default function SettingsModal() {
           , document.body)}
         {profileTouchDragPreview && createPortal(
           <div
-            className="fixed pointer-events-none z-[110] flex items-center justify-between gap-2 rounded-xl bg-white/95 px-3 py-2 text-xs text-gray-700 shadow-xl ring-1 ring-black/5 backdrop-blur-xl dark:bg-gray-900/95 dark:text-gray-300 dark:ring-white/10"
+            className="apple-select-menu fixed pointer-events-none z-[110] flex items-center justify-between gap-3 px-3 py-3 text-[13px]"
             style={{
               left: profileTouchDragPreview.x - profileTouchDragPreview.offsetX,
               top: profileTouchDragPreview.y - profileTouchDragPreview.offsetY,
@@ -2084,15 +2102,15 @@ export default function SettingsModal() {
             className="fixed inset-0 z-[110] flex items-center justify-center p-4"
             onClick={() => setCopyImportUrlProfile(null)}
           >
-            <div className="absolute inset-0 bg-black/20 dark:bg-black/40 backdrop-blur-md animate-overlay-in" />
+            <div className="apple-dialog-backdrop absolute inset-0 animate-overlay-in" />
             <div
-              className="relative bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl border border-white/50 dark:border-white/[0.08] rounded-3xl shadow-[0_8px_40px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_40px_rgb(0,0,0,0.4)] max-w-sm w-full p-6 z-10 ring-1 ring-black/5 dark:ring-white/10 animate-confirm-in"
+              role="dialog" aria-modal="true" aria-label="复制导入配置" className="apple-dialog apple-settings relative z-10 w-full max-w-md p-6 animate-confirm-in"
               onClick={(e) => e.stopPropagation()}
             >
               <button
                 type="button"
                 onClick={() => setCopyImportUrlProfile(null)}
-                className="absolute right-4 top-4 shrink-0 rounded-full p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/[0.06] dark:hover:text-gray-200"
+                className="apple-icon-button absolute right-3 top-3 shrink-0"
                 aria-label="关闭"
               >
                 <CloseIcon className="h-5 w-5" />
@@ -2107,9 +2125,9 @@ export default function SettingsModal() {
               </div>
 
               {!copyImportUrlOptions.includeApiKey && (
-                <div className="mb-6 rounded-2xl bg-gray-50/80 p-4 dark:bg-white/[0.03] ring-1 ring-black/5 dark:ring-white/5">
+                <div className="apple-settings-card mb-6 p-4">
                   <div className="text-[13px] font-bold text-gray-700 dark:text-gray-300 mb-3.5">New API 变量配置</div>
-                  <div className="space-y-3">
+                  <div className="apple-settings-group space-y-5">
                     <Checkbox
                       checked={copyImportUrlOptions.useNewApiAddress}
                       onChange={(checked) => updateCopyImportUrlOptions({ useNewApiAddress: checked })}
@@ -2135,7 +2153,7 @@ export default function SettingsModal() {
                     const options = { ...copyImportUrlOptions, includeApiKey: false }
                     copyProfileImportUrl(copyImportUrlProfile, options)
                   }}
-                  className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-white/[0.08] text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition"
+                  className="apple-button flex-1" data-tone="secondary"
                 >
                   不包含
                 </button>
@@ -2144,7 +2162,7 @@ export default function SettingsModal() {
                     const options = { ...copyImportUrlOptions, includeApiKey: true }
                     copyProfileImportUrl(copyImportUrlProfile, options)
                   }}
-                  className="flex-1 py-2 rounded-xl bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition shadow-sm shadow-blue-500/20"
+                  className="apple-button flex-1" data-tone="primary"
                 >
                   包含 API Key
                 </button>

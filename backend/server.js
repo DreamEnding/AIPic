@@ -11,6 +11,8 @@ const Busboy = require('busboy');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 const { createXaiImagineRequestInit, getXaiImagineEndpoint } = require('./xai-imagine');
+const { readImageEventStream } = require('./image-event-stream');
+const { formatImageUpstreamError } = require('./image-upstream-error');
 const { flushDailyFileLogs, installDailyFileLogger, isDailyFileLogEnabled } = require('./daily-file-logger');
 const { createVideoRequest, formatVideoResolution, getCreatedVideoTaskId, getVideoDownloadHeaders, getVideoPollPath, normalizeVideoPollResult } = require('./video-protocols');
 const { isPublicVideoProtocol, isVideoProtocol, resolveVideoProtocolConfig, validateVideoProtocolReferences, validateVideoProtocolRequest } = require('./video-protocol-config');
@@ -2114,13 +2116,15 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
       const extension = mimeType.split('/')[1] || 'png';
       const bytes = Buffer.from(img.data, 'base64');
       const blob = new Blob([bytes], { type: mimeType });
-      formData.append('image', blob, `image-${index}.${extension}`);
+      // 沿用 AIPic 已验证的 multipart 数组字段，避免中转服务按单文件协议解析参考图。
+      formData.append('image[]', blob, `input-${index + 1}.${extension}`);
     });
 
     return {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
+        ...(stream ? { 'Accept': 'text/event-stream', 'Cache-Control': 'no-cache' } : {}),
       },
       body: formData,
     };
@@ -2148,6 +2152,7 @@ function createGptImageRequestInit(apiKey, request, resolvedSize, options = {}) 
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
+      ...(stream ? { 'Accept': 'text/event-stream', 'Cache-Control': 'no-cache' } : {}),
     },
     body: JSON.stringify(payload),
   };
@@ -2226,57 +2231,6 @@ function extractImagePayload(data) {
   return imageData;
 }
 
-function parseImageEventStream(text) {
-  const payloads = [];
-  let dataLines = [];
-
-  const flush = () => {
-    if (dataLines.length === 0) return;
-    const raw = dataLines.join('\n').trim();
-    dataLines = [];
-    if (!raw || raw === '[DONE]') return;
-    const parsed = parseJsonSafely(raw);
-    if (parsed) payloads.push(parsed);
-  };
-
-  for (const rawLine of String(text || '').split(/\r?\n/)) {
-    const line = rawLine.trimEnd();
-    if (line === '') {
-      flush();
-      continue;
-    }
-    if (line.startsWith(':')) continue;
-    if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trimStart());
-    }
-  }
-  flush();
-
-  return payloads;
-}
-
-function isPartialImageEvent(payload) {
-  const type = typeof payload?.type === 'string' ? payload.type.toLowerCase() : '';
-  return type.includes('partial');
-}
-
-function extractImagePayloadFromEventStream(text) {
-  const payloads = parseImageEventStream(text);
-  const errorMessage = payloads.map(getErrorMessageFromPayload).find(Boolean);
-
-  for (const payload of [...payloads].reverse()) {
-    if (isPartialImageEvent(payload)) continue;
-    try {
-      return extractImagePayload(payload);
-    } catch {
-      // Keep scanning earlier events.
-    }
-  }
-
-  if (errorMessage) throw new Error(errorMessage);
-  throw new Error('响应中无图片数据');
-}
-
 function isImageEventStreamResponse(response) {
   return String(response.headers.get('content-type') || '').toLowerCase().includes('text/event-stream');
 }
@@ -2290,35 +2244,29 @@ function notifyImageSseResponse(options) {
   }
 }
 
-async function parseGptImageResponse(response) {
-  const isEventStream = isImageEventStreamResponse(response);
-  const responseText = await response.text();
-
-  if (!response.ok) {
-    throw new Error(`${getUpstreamHttpErrorPrefix(response.status)}：${responseText}`);
-  }
-
-  if (isEventStream) {
+/** 解析单次图片响应：SSE 逐块消费，JSON 只读取一次，网关错误不回显 HTML。 */
+async function parseGptImageResponse(response, options = {}) {
+  if (response.ok && isImageEventStreamResponse(response)) {
     try {
-      return extractImagePayloadFromEventStream(responseText);
+      return await readImageEventStream(response, {
+        extractImage: extractImagePayload,
+        getErrorMessage: getErrorMessageFromPayload,
+        onComplete: options.onStreamComplete,
+      });
     } catch (error) {
-      const detail = error instanceof Error ? error.message : '响应中无图片数据';
+      const detail = formatImageUpstreamError(undefined, String(error?.message || '流式连接中断'), options);
       throw new Error(`上游流式响应未完成：${detail}`);
     }
   }
-
-  if (isLikelyHtmlResponse(responseText)) {
-    throw new Error(`上游服务错误：${responseText}`);
+  const responseText = await response.text();
+  options.onBody?.(responseText);
+  if (!response.ok || isLikelyHtmlResponse(responseText)) {
+    throw new Error(formatImageUpstreamError(response, responseText, options));
   }
-
   const data = parseJsonSafely(responseText);
-  if (!data) {
-    throw new Error(`上游服务错误：${responseText}`);
+  if (!data || getErrorMessageFromPayload(data)) {
+    throw new Error(formatImageUpstreamError(response, responseText, options));
   }
-
-  const errorMessage = getErrorMessageFromPayload(data);
-  if (errorMessage) throw new Error(`上游服务错误：${responseText}`);
-
   return extractImagePayload(data);
 }
 
@@ -2340,21 +2288,31 @@ async function requestGptImage(apiKey, request, resolvedSize, options = {}) {
     outputSize: request.outputSize,
     aspectRatio: request.aspectRatio,
     resolvedSize: resolvedSize || 'auto',
+    streamRequested: stream,
   };
   logImageRequestUrl('openai', request.model, url, { size: resolvedSize || 'auto' });
   logImageUpstreamRequest('generate', url, requestInit, logContext, imageLogOptions);
+  const startedAt = Date.now();
   const response = await fetchWithTimeout(url, { ...requestInit, signal: options.signal });
-  if (imageLogOptions.enabled) {
-    const responseText = await response.clone().text();
-    logImageUpstreamResponse('generate', url, response, responseText, logContext, {
-      ...imageLogOptions,
-      isError: !response.ok,
-    });
-  }
-  const usesSse = isImageEventStreamResponse(response);
+  const usesSse = response.ok && isImageEventStreamResponse(response);
   if (usesSse) notifyImageSseResponse(options);
+  logImageUpstreamResponse('headers', url, response, undefined, {
+    ...logContext, usesSse, headersMs: Date.now() - startedAt,
+  }, { ...imageLogOptions, isError: !response.ok });
   try {
-    return { image: await parseGptImageResponse(response), usesSse };
+    return {
+      image: await parseGptImageResponse(response, {
+        streamRequested: stream,
+        apiKey,
+        onBody: (text) => logImageUpstreamResponse('generate', url, response, text, logContext, {
+          ...imageLogOptions, isError: !response.ok,
+        }),
+        onStreamComplete: (summary) => logImageUpstreamResponse('stream', url, response, JSON.stringify(summary), logContext, {
+          ...imageLogOptions, isError: !summary.completed,
+        }),
+      }),
+      usesSse,
+    };
   } catch (error) {
     if (resolvedSize && error instanceof Error) {
       error.message = `${error.message}（FlyReq 实际发送尺寸：${resolvedSize}）`;
@@ -2388,18 +2346,22 @@ async function requestXaiImagineImage(apiKey, request, options = {}) {
     const attemptContext = { ...logContext, attempt: attempt + 1 };
     logImageUpstreamRequest('generate', url, requestInit, attemptContext, imageLogOptions);
     const response = await fetchWithTimeout(url, { ...requestInit, signal: options.signal });
-    if (imageLogOptions.enabled) {
-      const responseText = await response.clone().text();
-      logImageUpstreamResponse('generate', url, response, responseText, attemptContext, {
-        ...imageLogOptions,
-        isError: !response.ok,
-      });
-    }
+    logImageUpstreamResponse('headers', url, response, undefined, attemptContext, {
+      ...imageLogOptions, isError: !response.ok,
+    });
     if (response.status !== 429 || attempt === XAI_IMAGINE_MAX_RETRIES) {
-      const usesSse = isImageEventStreamResponse(response);
+      const usesSse = response.ok && isImageEventStreamResponse(response);
       if (usesSse) notifyImageSseResponse(options);
       try {
-        return { image: await parseGptImageResponse(response), usesSse };
+        return { image: await parseGptImageResponse(response, {
+          apiKey,
+          onBody: (text) => logImageUpstreamResponse('generate', url, response, text, attemptContext, {
+            ...imageLogOptions, isError: !response.ok,
+          }),
+          onStreamComplete: (summary) => logImageUpstreamResponse('stream', url, response, JSON.stringify(summary), attemptContext, {
+            ...imageLogOptions, isError: !summary.completed,
+          }),
+        }), usesSse };
       } catch (error) {
         if (usesSse && error && typeof error === 'object') {
           error.usesSse = true;

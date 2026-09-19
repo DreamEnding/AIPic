@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useId } from 'react'
 import { createPortal } from 'react-dom'
-import { DEFAULT_DROPDOWN_MAX_HEIGHT, getDropdownMaxHeight } from '../lib/dropdown'
+import { DEFAULT_DROPDOWN_MAX_HEIGHT } from '../lib/dropdown'
 import { ChevronDownIcon, EditIcon, PlusIcon, TrashIcon, DragHandleIcon } from './icons'
 
 interface Option {
@@ -26,6 +26,7 @@ interface SelectProps {
 }
 
 export default function Select({ value, onChange, onReorder, options, disabled, className, tone = 'default' }: SelectProps) {
+  const menuId = useId()
   const [isOpen, setIsOpen] = useState(false)
   const [menuMaxHeight, setMenuMaxHeight] = useState(DEFAULT_DROPDOWN_MAX_HEIGHT)
   const [placement, setPlacement] = useState<'bottom' | 'top'>('bottom')
@@ -44,10 +45,9 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
   const touchDragRef = useRef<{ value: string | number, startX: number, startY: number, moved: boolean } | null>(null)
   const dragScrollIntervalRef = useRef<number | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   const selectedOption = options.find((o) => o.value === value)
-  const isDarkTone = tone === 'dark'
 
   useEffect(() => {
     return () => {
@@ -153,37 +153,77 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
   }
 
   return (
-    <div ref={containerRef} className="relative w-full">
-      <div
+    <div
+      ref={containerRef}
+      data-tone={tone}
+      className="apple-select relative w-full"
+      onKeyDown={(event) => {
+        if (disabled) return
+        if (event.key === 'Escape' && isOpen) {
+          event.preventDefault()
+          event.stopPropagation()
+          setIsOpen(false)
+          triggerRef.current?.focus()
+        }
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault()
+          const direction = event.key === 'ArrowDown' ? 1 : -1
+          setIsOpen(true)
+          requestAnimationFrame(() => {
+            const items = Array.from(containerRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])
+            if (items.length === 0) return
+            const currentIndex = items.findIndex((item) => item === document.activeElement)
+            const selectedIndex = options.findIndex((option) => option.value === value)
+            const nextIndex = currentIndex < 0
+              ? Math.max(0, selectedIndex)
+              : (currentIndex + direction + items.length) % items.length
+            items[nextIndex]?.focus()
+          })
+        }
+      }}
+    >
+      <button
         ref={triggerRef}
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-controls={menuId}
         onClick={handleToggle}
-        className={`flex items-center justify-between gap-1 w-full cursor-pointer select-none ${className ?? ''} ${
-          disabled
-            ? isDarkTone
-              ? '!opacity-50 !cursor-not-allowed !bg-white/[0.035] !text-zinc-500'
-              : '!opacity-50 !cursor-not-allowed !bg-gray-100/50 dark:!bg-white/[0.05]'
-            : ''
-        }`}
+        className={`apple-select-trigger flex min-h-11 w-full items-center justify-between gap-3 text-left ${className ?? ''}`}
       >
         <span className="truncate">{selectedOption?.label ?? value}</span>
-        <ChevronDownIcon className={`w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200 ${isDarkTone ? 'text-zinc-500' : 'text-gray-400 dark:text-gray-500'} ${isOpen ? 'rotate-180' : ''}`} />
-      </div>
+        <ChevronDownIcon className={`h-4 w-4 shrink-0 text-[var(--apple-secondary)] transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
 
       {isOpen && (
         <div
-          className={`absolute z-50 w-full overflow-hidden overflow-y-auto rounded-xl py-1 backdrop-blur-xl custom-scrollbar ${
-            isDarkTone
-              ? 'border border-white/[0.1] bg-zinc-950/95 shadow-[0_18px_45px_rgb(0,0,0,0.42)] ring-1 ring-cyan-300/[0.12]'
-              : 'border border-gray-200/60 bg-white/95 shadow-[0_8px_30px_rgb(0,0,0,0.12)] ring-1 ring-black/5 dark:border-white/[0.08] dark:bg-gray-900/95 dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] dark:ring-white/10'
-          } ${
-            placement === 'top' ? 'bottom-full mb-1.5 animate-dropdown-up' : 'top-full mt-1.5 animate-dropdown-down'
+          id={menuId}
+          role="listbox"
+          aria-label={selectedOption?.label ?? String(value)}
+          className={`apple-select-menu custom-scrollbar absolute z-50 w-full overflow-y-auto p-1.5 ${
+            placement === 'top' ? 'bottom-full mb-2 animate-dropdown-up' : 'top-full mt-2 animate-dropdown-down'
           }`}
           style={{ maxHeight: menuMaxHeight }}
         >
           {options.map((option) => (
             <div
               key={option.value}
+              role="option"
+              aria-selected={option.value === value}
+              data-variant={option.variant}
+              data-dragging={draggedValue === option.value || undefined}
+              tabIndex={0}
               data-option-value={String(option.value)}
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onChange(option.value)
+                  setIsOpen(false)
+                  triggerRef.current?.focus()
+                }
+              }}
               draggable={option.draggable}
               onDragStart={(e) => {
                 if (!option.draggable) return
@@ -338,17 +378,7 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
                 onChange(option.value)
                 setIsOpen(false)
               }}
-              className={`relative flex cursor-pointer items-center justify-between gap-2 px-3 py-2 text-xs transition-colors ${
-                draggedValue === option.value
-                  ? isDarkTone ? 'opacity-40 bg-white/[0.06]' : 'opacity-40 bg-gray-100 dark:bg-white/[0.04]'
-                  : option.variant === 'action'
-                  ? isDarkTone ? 'font-semibold text-cyan-300 hover:bg-cyan-300/[0.1]' : 'font-semibold text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10'
-                  : option.variant === 'danger'
-                  ? isDarkTone ? 'font-semibold text-red-300 hover:bg-red-500/10' : 'font-semibold text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10'
-                  : option.value === value
-                  ? isDarkTone ? 'bg-cyan-300/[0.12] text-cyan-200 font-medium' : 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium'
-                  : isDarkTone ? 'text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.06]'
-              }`}
+              className="apple-select-option relative flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-[13px]"
             >
               {dragOverValue === option.value && dragDropPosition === 'before' && draggedValue !== option.value && (
                 <div className="absolute -top-[1px] left-0 right-0 h-[2px] bg-blue-500 rounded-full z-40 shadow-sm pointer-events-none" />
@@ -360,7 +390,7 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
                 {option.draggable && (
                   <div
                     data-drag-handle
-                    className={`flex cursor-grab active:cursor-grabbing items-center justify-center opacity-60 transition-opacity hover:opacity-100 ${isDarkTone ? 'text-zinc-500' : 'text-gray-400 dark:text-gray-500'}`}
+                    className="flex min-h-11 min-w-8 cursor-grab items-center justify-center text-[var(--apple-secondary)] opacity-70 transition-opacity hover:opacity-100 active:cursor-grabbing"
                     style={{ touchAction: 'none' }}
                     title="拖拽排序"
                   >
@@ -369,6 +399,11 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
                 )}
                 <span className="min-w-0 truncate">{option.label}</span>
               </div>
+              {option.value === value && !option.variant && (
+                <svg aria-hidden="true" className="h-4 w-4 shrink-0 text-[var(--apple-accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m5 12 4 4L19 6" />
+                </svg>
+              )}
               {option.actions?.length ? (
                 <span className="ml-auto flex shrink-0 items-center gap-1">
                   {option.actions.map((action) => (
@@ -385,9 +420,8 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
                         action.onClick()
                         setIsOpen(false)
                       }}
-                      className={`rounded-md p-1.5 transition flex items-center justify-center ${action.variant === 'danger'
-                        ? isDarkTone ? 'text-red-300 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10'
-                        : isDarkTone ? 'text-zinc-500 hover:bg-white/[0.08] hover:text-zinc-100' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/[0.08] dark:hover:text-gray-200'}`}
+                      data-tone={action.variant === 'danger' ? 'danger' : 'secondary'}
+                      className="apple-icon-button"
                     >
                       {action.label === '编辑' ? (
                         <EditIcon className="w-3.5 h-3.5" />
@@ -413,7 +447,7 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
       {touchDragPreview && createPortal(
         <div
           id="touch-drag-preview"
-          className="fixed pointer-events-none z-[110] flex items-center justify-between gap-2 rounded-xl bg-white/95 px-3 py-2 text-xs text-gray-700 shadow-xl ring-1 ring-black/5 backdrop-blur-xl dark:bg-gray-900/95 dark:text-gray-300 dark:ring-white/10"
+          className="apple-select-menu fixed pointer-events-none z-[110] flex items-center justify-between gap-3 px-3 py-3 text-[13px]"
           style={{
             left: touchDragPreview.x - touchDragPreview.offsetX,
             top: touchDragPreview.y - touchDragPreview.offsetY,

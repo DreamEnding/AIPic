@@ -1,5 +1,6 @@
 import type { ApiProfile, TaskParams } from '../types'
 import { normalizeBaseUrl } from './devProxy'
+import { imageDataUrlToPngBlob, maskDataUrlToPngBlob } from './canvasImage'
 import {
   ApiResponseError,
   MIME_MAP,
@@ -46,6 +47,16 @@ function parseImageInput(dataUrl: string): { data: string; mimeType: string } {
   const match = /^data:(image\/[^;,]+);base64,([\s\S]+)$/.exec(dataUrl)
   if (!match) throw new Error('输入图片必须是有效的 Base64 图片数据。')
   return { data: match[2], mimeType: match[1] }
+}
+
+/** 将已处理的图片文件编码为 JSON 请求使用的数据 URL，保留文件的 MIME 类型。 */
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error ?? new Error('图片编码失败'))
+    reader.readAsDataURL(blob)
+  })
 }
 
 function getOutputSize(size: string): 'auto' | '1K' | '2K' | '4K' {
@@ -175,13 +186,27 @@ export async function getFlyreqQueuedImageResult(
 }
 
 export async function callFlyreqImageApi(opts: CallApiOptions, profile: ApiProfile): Promise<CallApiResult> {
-  const { params, inputImageDataUrls, maskDataUrl } = opts
-  assertImageInputPayloadSize(inputImageDataUrls.reduce((size, image) => size + getDataUrlEncodedByteSize(image), 0) + (maskDataUrl ? getDataUrlEncodedByteSize(maskDataUrl) : 0))
+  const { params } = opts
+  const inputImageDataUrls = [...opts.inputImageDataUrls]
+  let maskDataUrl = opts.maskDataUrl
   if (maskDataUrl) {
     if (inputImageDataUrls.length === 0) throw new Error('遮罩编辑需要输入图片。')
-    assertMaskEditFileSize('遮罩图片', getDataUrlDecodedByteSize(maskDataUrl))
-    for (const image of inputImageDataUrls) assertMaskEditFileSize('输入图片', getDataUrlDecodedByteSize(image))
+    // 保持原 Images API 的遮罩处理：仅将主图和遮罩转为 PNG，其余参考图保持原始字节。
+    const [imageBlob, maskBlob] = await Promise.all([
+      imageDataUrlToPngBlob(inputImageDataUrls[0]),
+      maskDataUrlToPngBlob(maskDataUrl),
+    ])
+    assertMaskEditFileSize('遮罩主图文件', imageBlob.size)
+    assertMaskEditFileSize('遮罩文件', maskBlob.size)
+    const [imageDataUrl, maskPngDataUrl] = await Promise.all([
+      blobToDataUrl(imageBlob),
+      blobToDataUrl(maskBlob),
+    ])
+    inputImageDataUrls[0] = imageDataUrl
+    maskDataUrl = maskPngDataUrl
+    for (const image of inputImageDataUrls.slice(1)) assertMaskEditFileSize('输入图片', getDataUrlDecodedByteSize(image))
   }
+  assertImageInputPayloadSize(inputImageDataUrls.reduce((size, image) => size + getDataUrlEncodedByteSize(image), 0) + (maskDataUrl ? getDataUrlEncodedByteSize(maskDataUrl) : 0))
   const timeoutSeconds = getImageRequestTimeoutSeconds(profile, params)
   const baseUrl = normalizeBaseUrl(profile.baseUrl)
   const body = {

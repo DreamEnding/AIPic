@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { initStore } from './store'
 import { useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './lib/urlSettings'
-import { getActiveApiProfile, isOpenAICompatibleProvider, mergeImportedSettings, normalizeSettings } from './lib/apiProfiles'
+import { mergeImportedSettings } from './lib/apiProfiles'
 import { getCustomProviderConfigUrl, loadCustomProviderSettingsFromUrl } from './lib/customProviderConfigUrl'
 import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigrationNotice'
 import Header from './components/Header'
@@ -70,7 +70,7 @@ export default function App() {
 
   return (
     <>
-      <Header />
+      {appMode === 'agent' && <Header />}
       {appMode === 'agent' ? (
         <AgentWorkspace />
       ) : (

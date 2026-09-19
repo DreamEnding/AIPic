@@ -9,6 +9,9 @@ export default {
       colors: {
         background: 'hsl(var(--background) / <alpha-value>)',
         border: 'hsl(var(--border) / <alpha-value>)',
+        surface: 'var(--apple-surface)',
+        canvas: 'var(--apple-canvas)',
+        accent: 'var(--apple-accent-text)',
         gray: colors.zinc,
         foreground: 'hsl(var(--foreground) / <alpha-value>)',
         input: 'hsl(var(--input) / <alpha-value>)',
@@ -24,6 +27,18 @@ export default {
           DEFAULT: 'hsl(var(--sidebar) / <alpha-value>)',
           foreground: 'hsl(var(--sidebar-foreground) / <alpha-value>)',
         },
+      },
+      borderRadius: {
+        control: '12px',
+        panel: '20px',
+        sheet: '24px',
+      },
+      boxShadow: {
+        panel: 'var(--apple-shadow-small)',
+        sheet: 'var(--apple-shadow)',
+      },
+      transitionTimingFunction: {
+        apple: 'var(--apple-ease)',
       },
       fontFamily: {
         sans: ['var(--font-ui-sans)'],

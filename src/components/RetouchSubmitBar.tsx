@@ -63,6 +63,7 @@ export default function RetouchSubmitBar() {
     <section
       data-no-drag-select
       data-retouch-submit
+      aria-label="修图创作设置"
       className={`retouch-submit-dock safe-area-x ${showSettings ? 'hidden pointer-events-none' : ''}`}
       onDragOver={(event) => {
         event.preventDefault()
@@ -99,23 +100,25 @@ export default function RetouchSubmitBar() {
 
         <div className="retouch-submit-main">
           <label className="retouch-prompt-field">
-            <span>主交互区 · 修图要求</span>
+            <span>修图要求</span>
             <textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               placeholder="直接描述要修哪里、强度、必须保留什么。例：保留人物身份和镜框结构，去掉皮肤瑕疵，肤色更干净自然。"
+              spellCheck={false}
               rows={3}
             />
           </label>
 
           <div className="retouch-submit-controls">
-            <div className="retouch-segment-group" aria-label="输出数量">
+            <div className="retouch-segment-group" role="group" aria-label="输出数量">
               <span>数量</span>
               {[1, 4].map((count) => (
                 <button
                   key={count}
                   type="button"
                   className={params.n === count ? 'is-active' : ''}
+                  aria-pressed={params.n === count}
                   onClick={() => setParams({ n: count })}
                 >
                   {count === 1 ? '1 张' : '4 版'}
@@ -123,7 +126,7 @@ export default function RetouchSubmitBar() {
               ))}
             </div>
 
-            <div className="retouch-segment-group" aria-label="修图质量">
+            <div className="retouch-segment-group" role="group" aria-label="修图质量">
               <span>质量</span>
               {qualityOptions.map((option) => (
                 <button
@@ -131,6 +134,7 @@ export default function RetouchSubmitBar() {
                   type="button"
                   title={option.hint}
                   className={params.quality === option.value ? 'is-active' : ''}
+                  aria-pressed={params.quality === option.value}
                   onClick={() => setParams({ quality: option.value })}
                 >
                   <strong>{option.label}</strong>
@@ -139,13 +143,14 @@ export default function RetouchSubmitBar() {
               ))}
             </div>
 
-            <div className="retouch-segment-group" aria-label="交付格式">
+            <div className="retouch-segment-group" role="group" aria-label="交付格式">
               <span>格式</span>
               {formatOptions.map((option) => (
                 <button
                   key={option.value}
                   type="button"
                   className={params.output_format === option.value ? 'is-active' : ''}
+                  aria-pressed={params.output_format === option.value}
                   onClick={() => setParams({ output_format: option.value })}
                 >
                   {option.label}
@@ -154,7 +159,7 @@ export default function RetouchSubmitBar() {
             </div>
 
             <button type="button" className="retouch-submit-button" onClick={handleSubmit}>
-              {apiIssue ? '配置 API' : '提交修图'}
+              {apiIssue ? '连接 API' : '开始修图'}
             </button>
           </div>
         </div>

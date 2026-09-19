@@ -1,12 +1,12 @@
 {
-  "name": "AI 专业修图台",
-  "short_name": "AI 修图",
+  "name": "AIPic 图像工作室",
+  "short_name": "AIPic",
   "description": "面向专业修图师与设计师的 AI Native 修图工作台",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#030712",
-  "theme_color": "#111827",
+  "background_color": "#f5f5f7",
+  "theme_color": "#f5f5f7",
   "icons": [
     {
       "src": "./pwa-icon.svg",
