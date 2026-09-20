@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { calculateImageSize, normalizeImageSize, parseRatio, type SizeTier } from '../lib/size'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import ViewportTooltip from './ViewportTooltip'
@@ -18,7 +18,7 @@ const RATIOS = [
 
 interface Props {
   currentSize: string
-  onSelect: (size: string) => void
+  onSelect: (size: string, ratio?: string) => void
   onClose: () => void
   allowAuto?: boolean
 }
@@ -44,9 +44,17 @@ function findPresetForSize(size: string) {
 }
 
 export default function SizePickerModal({ currentSize, onSelect, onClose, allowAuto = true }: Props) {
-  usePreventBackgroundScroll(true)
-
   const modalRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  usePreventBackgroundScroll(true, modalRef)
+
+  useEffect(() => {
+    const previousFocus = document.activeElement
+    modalRef.current?.focus()
+    return () => {
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus()
+    }
+  }, [])
   const mouseDownTargetRef = useRef<EventTarget | null>(null)
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -155,7 +163,7 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
 
   const applySize = () => {
     if (!previewSize) return
-    onSelect(previewSize)
+    onSelect(previewSize, mode === 'ratio' ? activeRatio : undefined)
     onClose()
   }
 
@@ -176,11 +184,32 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm animate-overlay-in" />
       <div
         ref={modalRef}
-        className="relative z-10 w-full max-w-md rounded-3xl border border-white/50 bg-white/95 p-5 shadow-2xl ring-1 ring-black/5 animate-modal-in dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.stopPropagation()
+            onClose()
+          }
+          if (event.key !== 'Tab') return
+          const controls = event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [tabindex="0"]')
+          const first = controls[0]
+          const last = controls[controls.length - 1]
+          if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) {
+            event.preventDefault()
+            last?.focus()
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault()
+            first?.focus()
+          }
+        }}
+        className="relative z-10 max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-white/50 bg-white/95 p-5 shadow-2xl ring-1 ring-black/5 animate-modal-in dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10"
       >
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">设置图像尺寸</h3>
+            <h3 id={titleId} className="text-base font-semibold text-gray-800 dark:text-gray-100">设置图像尺寸</h3>
             <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">当前：{currentSize || 'auto'}</p>
           </div>
           <button

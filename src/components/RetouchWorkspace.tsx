@@ -5,6 +5,7 @@ import type { TaskParams, TaskRecord } from '../types'
 import { getActiveApiProfile, validateApiProfile } from '../lib/apiProfiles'
 import { calculateImageSize, normalizeImageSize, type SizeTier } from '../lib/size'
 import { editorialRetouchPresets } from '../lib/editorialRetouchPresets'
+import SizePickerModal from './SizePickerModal'
 import { CloseIcon, EditIcon, HistoryIcon, PhotoIcon, RefreshIcon, SettingsIcon, WrenchIcon } from './icons'
 
 type StudioSymbolName = 'sparkles' | 'compare' | 'expand' | 'arrow' | 'collage' | 'panels' | 'minimal'
@@ -49,7 +50,7 @@ type RetouchTemplateId = string
 type RetouchStrengthId = 'light' | 'standard' | 'strong' | 'max'
 type RetouchTargetId = 'auto' | 'female' | 'male' | 'child' | 'product'
 type RetouchPreviewMode = 'empty' | 'current' | 'history'
-type RetouchOutputSizeId = 'auto' | SizeTier
+type RetouchOutputSizeId = 'auto' | 'custom' | SizeTier
 type RetouchGenerationMode = 'text' | 'edit'
 
 type RetouchTemplate = {
@@ -68,7 +69,7 @@ const reviewParams: Partial<TaskParams> = { n: 4, quality: 'medium', output_form
 const previewZoomMin = 1
 const previewZoomMax = 4
 const outputSizeTiers: SizeTier[] = ['1K', '2K', '4K']
-const outputSizeHints: Record<RetouchOutputSizeId, string> = {
+const outputSizeHints: Record<Exclude<RetouchOutputSizeId, 'custom'>, string> = {
   auto: '模型判断',
   '1K': '快速',
   '2K': '交付',
@@ -823,17 +824,18 @@ function getNearestOutputRatio(aspectRatio: number | null) {
     .sort((a, b) => a.delta - b.delta)[0]?.label ?? '1:1'
 }
 
-function getOutputSizeIdFromSize(size: string): RetouchOutputSizeId {
+function getOutputSizePreset(size: string): { id: RetouchOutputSizeId; ratio: string | null } {
   const normalizedSize = normalizeImageSize(size)
-  if (normalizedSize === 'auto') return 'auto'
+  if (normalizedSize === 'auto') return { id: 'auto', ratio: null }
 
   for (const tier of outputSizeTiers) {
     for (const ratio of commonOutputRatios) {
-      if (calculateImageSize(tier, ratio.label) === normalizedSize) return tier
+      if (calculateImageSize(tier, ratio.label) === normalizedSize) return { id: tier, ratio: ratio.label }
     }
   }
 
-  return 'auto'
+  const dimensions = normalizedSize.match(/^(\d+)x(\d+)$/)
+  return { id: 'custom', ratio: dimensions ? `${dimensions[1]}:${dimensions[2]}` : null }
 }
 
 function buildRetouchPrompt(template: RetouchTemplate, strengthId: RetouchStrengthId, targetId: RetouchTargetId) {
@@ -1038,6 +1040,8 @@ export default function RetouchWorkspace() {
 
   const previewStageRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showSizePicker, setShowSizePicker] = useState(false)
+  const [selectedOutputRatio, setSelectedOutputRatio] = useState<{ size: string; ratio: string } | null>(null)
   const [previewStageSize, setPreviewStageSize] = useState({ width: 0, height: 0 })
   const [previewImageAspect, setPreviewImageAspect] = useState<number | null>(null)
   const [previewZoom, setPreviewZoom] = useState(1)
@@ -1119,7 +1123,11 @@ export default function RetouchWorkspace() {
   const outputImageId = visibleOutputTask?.outputImages[0] ?? null
   const beforeImageSrc = useCachedImageSource(beforeImageId, inputPreview)
   const outputImageSrc = useCachedImageSource(outputImageId)
-  const outputSizeRatio = useMemo(() => getNearestOutputRatio(previewImageAspect), [previewImageAspect])
+  const outputSizePreset = useMemo(() => getOutputSizePreset(params.size), [params.size])
+  // 保留用户指定的比例，避免档位切换时反复从规整后的像素反推而产生偏移。
+  const outputSizeRatio = selectedOutputRatio?.size === params.size
+    ? selectedOutputRatio.ratio
+    : outputSizePreset.ratio ?? getNearestOutputRatio(previewImageAspect)
   const outputSizeOptions = useMemo(
     () => [
       { id: 'auto' as const, label: '自动', hint: outputSizeHints.auto, value: 'auto' },
@@ -1132,7 +1140,7 @@ export default function RetouchWorkspace() {
     ],
     [outputSizeRatio],
   )
-  const activeOutputSizeId = getOutputSizeIdFromSize(params.size)
+  const activeOutputSizeId = outputSizePreset.id
   const hasPreviewImage = Boolean(outputImageSrc || beforeImageSrc)
   const canCompare = Boolean(visibleOutputTask?.inputImageIds[0] && visibleOutputTask?.outputImages[0] && beforeImageSrc && outputImageSrc)
   const canUsePreviewZoom = hasPreviewImage && !(compareEnabled && canCompare)
@@ -1283,13 +1291,6 @@ export default function RetouchWorkspace() {
       setPreviewPan({ x: 0, y: 0 })
     }
   }, [canUsePreviewZoom, previewZoom])
-
-  useEffect(() => {
-    if (activeOutputSizeId === 'auto') return
-    const selectedOption = outputSizeOptions.find((option) => option.id === activeOutputSizeId)
-    if (!selectedOption || selectedOption.value === params.size) return
-    setParams({ size: selectedOption.value })
-  }, [activeOutputSizeId, outputSizeOptions, params.size, setParams])
 
   useEffect(() => {
     if (groupedCategoryTemplates.length && !groupedCategoryTemplates.some((group) => group.group === selectedGroupName)) {
@@ -1964,6 +1965,7 @@ export default function RetouchWorkspace() {
                       className={activeOutputSizeId === option.id ? 'is-active' : ''}
                       aria-pressed={activeOutputSizeId === option.id}
                       onClick={() => {
+                        setSelectedOutputRatio(option.id === 'auto' ? null : { size: option.value, ratio: outputSizeRatio })
                         setParams({ size: option.value })
                         showToast(
                           option.id === 'auto'
@@ -1978,6 +1980,20 @@ export default function RetouchWorkspace() {
                     </button>
                   ))}
                 </div>
+
+                <button
+                  type="button"
+                  className="retouch-size-picker"
+                  aria-haspopup="dialog"
+                  aria-expanded={showSizePicker}
+                  title="选择图像比例或自定义宽高"
+                  onClick={() => setShowSizePicker(true)}
+                >
+                  <SettingsIcon className="h-4 w-4" aria-hidden="true" />
+                  <span>设置尺寸</span>
+                  <strong>{params.size === 'auto' ? '自动' : params.size.replace('x', ' × ')}</strong>
+                  <StudioSymbol name="arrow" className="h-4 w-4" />
+                </button>
 
                 <div className="retouch-segment-group" role="group" aria-label="修图质量">
                   <span>质量</span>
@@ -2104,6 +2120,17 @@ export default function RetouchWorkspace() {
           </aside>
         </div>
       </div>
+      {showSizePicker && (
+        <SizePickerModal
+          currentSize={params.size}
+          onSelect={(size, ratio) => {
+            setSelectedOutputRatio(ratio ? { size, ratio } : null)
+            setParams({ size })
+            showToast(size === 'auto' ? '输出尺寸已设为自动' : `输出尺寸已设为 ${size}`, 'success')
+          }}
+          onClose={() => setShowSizePicker(false)}
+        />
+      )}
     </section>
   )
 }
