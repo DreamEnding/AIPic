@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { calculateImageSize, normalizeImageSize, parseRatio, type SizeTier } from '../lib/size'
+import { calculateImageSize, getImageSizeSelection, normalizeImageSize, parseRatio, type ImageSizeSelection, type SizeTier } from '../lib/size'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import ViewportTooltip from './ViewportTooltip'
 
@@ -18,7 +18,8 @@ const RATIOS = [
 
 interface Props {
   currentSize: string
-  onSelect: (size: string, ratio?: string) => void
+  currentSelection?: ImageSizeSelection
+  onSelect: (size: string, selection?: ImageSizeSelection) => void
   onClose: () => void
   allowAuto?: boolean
 }
@@ -31,19 +32,7 @@ function parseSize(size: string) {
   return { width: match[1], height: match[2] }
 }
 
-function findPresetForSize(size: string) {
-  const normalized = normalizeImageSize(size)
-  for (const tier of TIERS) {
-    for (const ratio of RATIOS) {
-      if (calculateImageSize(tier, ratio.value) === normalized) {
-        return { tier, ratio: ratio.value }
-      }
-    }
-  }
-  return null
-}
-
-export default function SizePickerModal({ currentSize, onSelect, onClose, allowAuto = true }: Props) {
+export default function SizePickerModal({ currentSize, currentSelection, onSelect, onClose, allowAuto = true }: Props) {
   const modalRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
   usePreventBackgroundScroll(true, modalRef)
@@ -77,18 +66,19 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
     mouseDownTargetRef.current = null
   }
 
-  const currentPreset = findPresetForSize(currentSize)
-  const currentParsedSize = parseSize(currentSize)
+  const initialSelection = currentSelection ?? getImageSizeSelection(currentSize)
+  const currentParsedSize = parseSize(normalizeImageSize(currentSize))
+  const initialRatio = initialSelection?.ratio ?? (allowAuto ? '1:1' : '4:3')
   const [mode, setMode] = useState<Mode>(() => {
     if (!currentSize || currentSize === 'auto') return allowAuto ? 'auto' : 'ratio'
-    if (currentPreset) return 'ratio'
+    if (initialSelection && calculateImageSize(initialSelection.tier, initialSelection.ratio) === normalizeImageSize(currentSize)) return 'ratio'
     return 'resolution'
   })
 
-  // Ratio mode state
-  const [tier, setTier] = useState<SizeTier>(currentPreset?.tier ?? '1K')
-  const [ratio, setRatio] = useState(currentPreset?.ratio ?? (allowAuto ? '1:1' : '4:3'))
-  const [customRatio, setCustomRatio] = useState('16:9')
+  // Keep custom ratios and their resolution tier when reopening the picker.
+  const [tier, setTier] = useState<SizeTier>(initialSelection?.tier ?? '1K')
+  const [ratio, setRatio] = useState(RATIOS.some((item) => item.value === initialRatio) ? initialRatio : 'custom')
+  const [customRatio, setCustomRatio] = useState(initialRatio)
 
   // Resolution mode state
   const [customW, setCustomW] = useState(currentParsedSize?.width ?? '1024')
@@ -161,9 +151,37 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
     }, 450)
   }
 
+  const changeMode = (nextMode: Mode) => {
+    if (nextMode === mode) return
+
+    // Synchronize before leaving an explicit mode, including detours through auto.
+    if (mode === 'ratio') {
+      const dimensions = parseSize(previewSize)
+      if (dimensions) {
+        setCustomW(dimensions.width)
+        setCustomH(dimensions.height)
+      }
+    } else if (mode === 'resolution' && previewSize) {
+      // Preserve the original ratio when its pixel fields have not changed.
+      if (calculateImageSize(tier, activeRatio) !== previewSize) {
+        const selection = getImageSizeSelection(previewSize)
+        if (selection) {
+          setTier(selection.tier)
+          setRatio(RATIOS.some((item) => item.value === selection.ratio) ? selection.ratio : 'custom')
+          setCustomRatio(selection.ratio)
+        }
+      }
+    }
+
+    setMode(nextMode)
+  }
+
   const applySize = () => {
     if (!previewSize) return
-    onSelect(previewSize, mode === 'ratio' ? activeRatio : undefined)
+    const selection = mode !== 'auto' && calculateImageSize(tier, activeRatio) === previewSize
+      ? { tier, ratio: activeRatio }
+      : getImageSizeSelection(previewSize) ?? undefined
+    onSelect(previewSize, selection)
     onClose()
   }
 
@@ -227,20 +245,20 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
           <div className="flex rounded-xl bg-gray-100/80 p-1 dark:bg-white/[0.04]">
             {allowAuto && (
               <button
-                onClick={() => setMode('auto')}
+                onClick={() => changeMode('auto')}
                 className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition ${mode === 'auto' ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
               >
                 自动
               </button>
             )}
             <button
-              onClick={() => setMode('ratio')}
+              onClick={() => changeMode('ratio')}
               className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition ${mode === 'ratio' ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
             >
               按比例
             </button>
             <button
-              onClick={() => setMode('resolution')}
+              onClick={() => changeMode('resolution')}
               className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition ${mode === 'resolution' ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
             >
               自定义宽高

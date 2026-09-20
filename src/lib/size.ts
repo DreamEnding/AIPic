@@ -7,6 +7,11 @@ const MIN_PIXELS = 655_360
 const MAX_PIXELS = 8_294_400
 
 export type SizeTier = '1K' | '2K' | '4K'
+
+export interface ImageSizeSelection {
+  tier: SizeTier
+  ratio: string
+}
 type PresetRatio = '1:1' | '3:2' | '2:3' | '16:9' | '9:16' | '4:3' | '3:4' | '21:9'
 
 function roundToMultiple(value: number, multiple: number) {
@@ -195,6 +200,29 @@ const COMMON_SIZE_PRESETS: Record<SizeTier, Record<PresetRatio, string>> = {
     '3:4': '2400x3200',
     '21:9': '3840x1600',
   },
+}
+
+/** Recover the selected resolution tier, including non-preset 4K dimensions. */
+export function getImageSizeSelection(size: string): ImageSizeSelection | null {
+  const dimensions = size.match(SIZE_PATTERN)
+  if (!dimensions) return null
+  const width = Number(dimensions[1])
+  const height = Number(dimensions[2])
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null
+
+  const normalized = normalizeImageSize(size)
+  for (const tier of Object.keys(COMMON_SIZE_PRESETS) as SizeTier[]) {
+    for (const [ratio, preset] of Object.entries(COMMON_SIZE_PRESETS[tier])) {
+      if (preset === normalized) return { tier, ratio }
+    }
+  }
+
+  const pixels = width * height
+  const longestEdge = Math.max(width, height)
+  const tier: SizeTier = pixels > TIER_PIXEL_BUDGET['2K'] || longestEdge >= MAX_EDGE
+    ? '4K'
+    : pixels > TIER_PIXEL_BUDGET['1K'] || longestEdge > 1536 ? '2K' : '1K'
+  return { tier, ratio: `${width}:${height}` }
 }
 
 function getPresetRatioKey(ratioWidth: number, ratioHeight: number): PresetRatio | null {

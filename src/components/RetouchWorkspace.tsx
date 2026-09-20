@@ -3,7 +3,7 @@ import type { CSSProperties, PointerEvent, SVGProps, WheelEvent as ReactWheelEve
 import { addImageFromFile, ensureImageCached, submitTask, useStore } from '../store'
 import type { TaskParams, TaskRecord } from '../types'
 import { getActiveApiProfile, validateApiProfile } from '../lib/apiProfiles'
-import { calculateImageSize, normalizeImageSize, type SizeTier } from '../lib/size'
+import { calculateImageSize, getImageSizeSelection, type ImageSizeSelection, type SizeTier } from '../lib/size'
 import { editorialRetouchPresets } from '../lib/editorialRetouchPresets'
 import SizePickerModal from './SizePickerModal'
 import { CloseIcon, EditIcon, HistoryIcon, PhotoIcon, RefreshIcon, SettingsIcon, WrenchIcon } from './icons'
@@ -824,20 +824,6 @@ function getNearestOutputRatio(aspectRatio: number | null) {
     .sort((a, b) => a.delta - b.delta)[0]?.label ?? '1:1'
 }
 
-function getOutputSizePreset(size: string): { id: RetouchOutputSizeId; ratio: string | null } {
-  const normalizedSize = normalizeImageSize(size)
-  if (normalizedSize === 'auto') return { id: 'auto', ratio: null }
-
-  for (const tier of outputSizeTiers) {
-    for (const ratio of commonOutputRatios) {
-      if (calculateImageSize(tier, ratio.label) === normalizedSize) return { id: tier, ratio: ratio.label }
-    }
-  }
-
-  const dimensions = normalizedSize.match(/^(\d+)x(\d+)$/)
-  return { id: 'custom', ratio: dimensions ? `${dimensions[1]}:${dimensions[2]}` : null }
-}
-
 function buildRetouchPrompt(template: RetouchTemplate, strengthId: RetouchStrengthId, targetId: RetouchTargetId) {
   const strength = strengthOptions.find((option) => option.id === strengthId) ?? strengthOptions[1]
   const target = targetOptions.find((option) => option.id === targetId) ?? targetOptions[0]
@@ -1041,7 +1027,7 @@ export default function RetouchWorkspace() {
   const previewStageRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showSizePicker, setShowSizePicker] = useState(false)
-  const [selectedOutputRatio, setSelectedOutputRatio] = useState<{ size: string; ratio: string } | null>(null)
+  const [selectedOutputSize, setSelectedOutputSize] = useState<{ size: string; selection: ImageSizeSelection } | null>(null)
   const [previewStageSize, setPreviewStageSize] = useState({ width: 0, height: 0 })
   const [previewImageAspect, setPreviewImageAspect] = useState<number | null>(null)
   const [previewZoom, setPreviewZoom] = useState(1)
@@ -1123,11 +1109,12 @@ export default function RetouchWorkspace() {
   const outputImageId = visibleOutputTask?.outputImages[0] ?? null
   const beforeImageSrc = useCachedImageSource(beforeImageId, inputPreview)
   const outputImageSrc = useCachedImageSource(outputImageId)
-  const outputSizePreset = useMemo(() => getOutputSizePreset(params.size), [params.size])
-  // 保留用户指定的比例，避免档位切换时反复从规整后的像素反推而产生偏移。
-  const outputSizeRatio = selectedOutputRatio?.size === params.size
-    ? selectedOutputRatio.ratio
-    : outputSizePreset.ratio ?? getNearestOutputRatio(previewImageAspect)
+  const inferredOutputSize = useMemo(() => getImageSizeSelection(params.size), [params.size])
+  // 档位与原始比例一起往返弹窗，避免自定义 4K 被当作未选择而重置为 1K。
+  const outputSizeSelection = selectedOutputSize?.size === params.size
+    ? selectedOutputSize.selection
+    : inferredOutputSize
+  const outputSizeRatio = outputSizeSelection?.ratio ?? getNearestOutputRatio(previewImageAspect)
   const outputSizeOptions = useMemo(
     () => [
       { id: 'auto' as const, label: '自动', hint: outputSizeHints.auto, value: 'auto' },
@@ -1135,12 +1122,12 @@ export default function RetouchWorkspace() {
         id: tier,
         label: tier,
         hint: outputSizeHints[tier],
-        value: calculateImageSize(tier, outputSizeRatio) ?? 'auto',
+        value: calculateImageSize(tier, outputSizeRatio),
       })),
     ],
     [outputSizeRatio],
   )
-  const activeOutputSizeId = outputSizePreset.id
+  const activeOutputSizeId: RetouchOutputSizeId = params.size === 'auto' ? 'auto' : outputSizeSelection?.tier ?? 'custom'
   const hasPreviewImage = Boolean(outputImageSrc || beforeImageSrc)
   const canCompare = Boolean(visibleOutputTask?.inputImageIds[0] && visibleOutputTask?.outputImages[0] && beforeImageSrc && outputImageSrc)
   const canUsePreviewZoom = hasPreviewImage && !(compareEnabled && canCompare)
@@ -1961,11 +1948,13 @@ export default function RetouchWorkspace() {
                     <button
                       key={option.id}
                       type="button"
-                      title={option.value === 'auto' ? '由模型自动判断输出尺寸' : `${option.label} · ${option.value}`}
+                      title={!option.value ? '当前比例无法生成此档位，请在设置尺寸中调整比例' : option.value === 'auto' ? '由模型自动判断输出尺寸' : `${option.label} · ${option.value}`}
+                      disabled={!option.value}
                       className={activeOutputSizeId === option.id ? 'is-active' : ''}
                       aria-pressed={activeOutputSizeId === option.id}
                       onClick={() => {
-                        setSelectedOutputRatio(option.id === 'auto' ? null : { size: option.value, ratio: outputSizeRatio })
+                        if (!option.value) return
+                        setSelectedOutputSize(option.id === 'auto' ? null : { size: option.value, selection: { tier: option.id, ratio: outputSizeRatio } })
                         setParams({ size: option.value })
                         showToast(
                           option.id === 'auto'
@@ -2123,8 +2112,9 @@ export default function RetouchWorkspace() {
       {showSizePicker && (
         <SizePickerModal
           currentSize={params.size}
-          onSelect={(size, ratio) => {
-            setSelectedOutputRatio(ratio ? { size, ratio } : null)
+          currentSelection={selectedOutputSize?.size === params.size ? selectedOutputSize.selection : undefined}
+          onSelect={(size, selection) => {
+            setSelectedOutputSize(selection ? { size, selection } : null)
             setParams({ size })
             showToast(size === 'auto' ? '输出尺寸已设为自动' : `输出尺寸已设为 ${size}`, 'success')
           }}
