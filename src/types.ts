@@ -107,6 +107,7 @@ export interface TaskParams {
   output_format: 'png' | 'jpeg' | 'webp'
   output_compression: number | null
   moderation: 'auto' | 'low'
+  background?: 'auto' | 'transparent' | 'opaque'
   n: number
 }
 

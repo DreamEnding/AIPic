@@ -48,6 +48,21 @@ npm run dev:backend
 
 开发页面为 `http://127.0.0.1:5173/`。`npm run build:backend` 在构建时设置 `VITE_TASK_BACKEND=flyreq`，启用异步 Images 通道；普通 `npm run build` 保留原有静态 / Pages 部署通道。
 
+## 图像生成参数
+
+工作台右侧提供质量（自动 / 快速 / 标准 / 精修）、格式和尺寸快捷档位；「生成参数」提供完整输出张数、内容审核、压缩质量和背景选项。配置随浏览器保存。
+
+| 选项 | 可选值 | 说明 |
+| --- | --- | --- |
+| 输出张数 | 1–10；fal.ai 为 1–4 | 实际上限以所用服务商为准 |
+| 内容审核 | `auto` / `low` | `low` 表示较低审核强度，不代表关闭审核；fal.ai 不支持 |
+| 压缩质量 | 留空，或 0–100 的整数 | 留空使用服务商默认；仅 JPEG / WebP 支持；数值越高画质越高 |
+| 背景 | 服务商默认 / `auto` / `opaque` / `transparent` | 默认不新增请求参数；透明背景需要 PNG / WebP 和支持该参数的模型 |
+
+选择 JPEG 时，透明背景会切换为不透明；导入的透明 JPEG 配置在提交前会规整为 PNG。自定义 HTTP 服务商通过请求模板映射参数，例如 `$params.moderation`、`$params.output_compression` 和 `$params.background`。fal.ai 不支持审核、压缩和背景参数，对应控件不可用。
+
+点击「API 参数」可配置服务商、URL、密钥、模型、Images / Responses 模式，以及服务端转发、流式传输、中间图数量（0–3）、Base64 返回、Codex 兼容模式和超时（10–3600 秒）。高级配置默认展开；不改变原有参数默认值。Codex 兼容模式使用自动质量。
+
 ## API 配置
 
 应用默认使用 OpenAI 兼容接口，默认 API 地址为：
@@ -332,6 +347,16 @@ git push origin main
 Docker 镜像的发布入口为 `.github/workflows/docker.yml`：`v0.4.9` 标签必须指向 `package.json` 和 `package-lock.json` 都为 `0.4.9` 的提交。工作流分别构建 amd64、arm64，核对镜像架构、版本和源码提交，生成源码包与 `SHA256SUMS`，附件齐全后才公开 Release。构建与打包步骤不执行应用测试或启动应用容器。
 
 仓库保留的 **Optional GitHub Pages Deployment** 工作流仅支持手动触发，不参与 `image.simplaj.top` 的发布，也不会在推送标签时创建额外站点。
+
+### dev 分支预览
+
+开发改动先推送 `dev`，不修改生产分支 `main`。在 Cloudflare Pages 的构建设置中启用 `dev` 分支的 Preview deployment，沿用 `npm run build` 和 `dist`。预览环境同样需要 `/api-proxy/` Function，不要设置 `VITE_TASK_BACKEND=flyreq`。
+
+```bash
+git push -u origin dev
+```
+
+以 Cloudflare Deployments 中该次 `dev` 提交的 Preview 地址为准；生产域名仍由 `main` 管理。不要用 `--branch main` 发布开发版本。
 
 ### 手动部署（备用）
 

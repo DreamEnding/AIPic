@@ -5,6 +5,7 @@ import type { TaskParams, TaskRecord } from '../types'
 import { getActiveApiProfile, validateApiProfile } from '../lib/apiProfiles'
 import { calculateImageSize, normalizeImageSize, type SizeTier } from '../lib/size'
 import { editorialRetouchPresets } from '../lib/editorialRetouchPresets'
+import RetouchAdvancedOptions from './RetouchAdvancedOptions'
 import { CloseIcon, EditIcon, HistoryIcon, PhotoIcon, RefreshIcon, SettingsIcon, WrenchIcon } from './icons'
 
 type StudioSymbolName = 'sparkles' | 'compare' | 'expand' | 'arrow' | 'collage' | 'panels' | 'minimal'
@@ -85,6 +86,7 @@ const commonOutputRatios = [
   { label: '21:9', value: 21 / 9 },
 ]
 const qualityOptions: Array<{ label: string; value: TaskParams['quality']; hint: string }> = [
+  { label: '自动', value: 'auto', hint: '模型判断' },
   { label: '快速', value: 'low', hint: '测试构图' },
   { label: '标准', value: 'medium', hint: '客户审片' },
   { label: '精修', value: 'high', hint: '最终交付' },
@@ -1062,6 +1064,8 @@ export default function RetouchWorkspace() {
   const promptManuallyEditedRef = useRef(false)
   const activeProfile = useMemo(() => getActiveApiProfile(settings), [settings])
   const apiIssue = validateApiProfile(activeProfile)
+  const qualityLocked = activeProfile.provider === 'openai' && activeProfile.codexCli
+  const effectiveQuality = qualityLocked ? 'auto' : activeProfile.provider === 'fal' && params.quality === 'auto' ? 'high' : params.quality
   const retouchTasks = useMemo(
     () => tasks.filter((task) => task.sourceMode !== 'agent' && !task.agentConversationId && !task.agentRoundId),
     [tasks],
@@ -1981,13 +1985,14 @@ export default function RetouchWorkspace() {
 
                 <div className="retouch-segment-group" role="group" aria-label="修图质量">
                   <span>质量</span>
-                  {qualityOptions.map((option) => (
+                  {qualityOptions.filter((option) => activeProfile.provider !== 'fal' || option.value !== 'auto').map((option) => (
                     <button
                       key={option.value}
                       type="button"
-                      title={option.hint}
-                      className={params.quality === option.value ? 'is-active' : ''}
-                      aria-pressed={params.quality === option.value}
+                      title={qualityLocked ? 'Codex 兼容模式使用自动质量' : option.hint}
+                      disabled={qualityLocked}
+                      className={effectiveQuality === option.value ? 'is-active' : ''}
+                      aria-pressed={effectiveQuality === option.value}
                       onClick={() => setParams({ quality: option.value })}
                     >
                       <strong>{option.label}</strong>
@@ -2004,12 +2009,17 @@ export default function RetouchWorkspace() {
                       type="button"
                       className={params.output_format === option.value ? 'is-active' : ''}
                       aria-pressed={params.output_format === option.value}
-                      onClick={() => setParams({ output_format: option.value })}
+                      onClick={() => setParams({
+                        output_format: option.value,
+                        ...(option.value === 'jpeg' && params.background === 'transparent' ? { background: 'opaque' as const } : {}),
+                      })}
                     >
                       {option.label}
                     </button>
                   ))}
                 </div>
+
+                <RetouchAdvancedOptions />
 
                 <button type="button" className="retouch-submit-button" onClick={handleSubmit}>
                   <StudioSymbol name="sparkles" className="h-4 w-4" />

@@ -318,7 +318,7 @@ export default function SettingsModal() {
   const [profileImportUrlTooltipVisible, setProfileImportUrlTooltipVisible] = useState(false)
   const [duplicateProfileTooltipVisible, setDuplicateProfileTooltipVisible] = useState(false)
   const [llmPromptTooltipVisible, setLlmPromptTooltipVisible] = useState(false)
-  const [showAdvancedApiSettings, setShowAdvancedApiSettings] = useState(false)
+  const [showAdvancedApiSettings, setShowAdvancedApiSettings] = useState(true)
   const [activeTab, setActiveTab] = useState<SettingsTab>('api')
   const [exportConfig, setExportConfig] = useState(true)
   const [exportTasks, setExportTasks] = useState(true)
@@ -1585,7 +1585,7 @@ export default function SettingsModal() {
                     <div>
                       <div className="text-sm font-medium text-gray-800 dark:text-gray-100">高级设置</div>
                       <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-500">
-                        流式传输、Base64、Codex 兼容、超时等低频选项
+                        服务端转发、流式传输、中间图、Base64、Codex 兼容与超时
                       </div>
                     </div>
                     <ChevronDownIcon className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${showAdvancedApiSettings ? 'rotate-180' : ''}`} />

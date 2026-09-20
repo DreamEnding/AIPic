@@ -10,6 +10,19 @@ export function getOutputImageLimitForSettings(settings: AppSettings) {
   return getActiveApiProfile(settings).provider === 'fal' ? MAX_FAL_OUTPUT_IMAGES : MAX_OPENAI_OUTPUT_IMAGES
 }
 
+/** Preserve transparent backgrounds by selecting an output format that supports alpha. */
+export function normalizeImageBackgroundParams(params: TaskParams): TaskParams {
+  const background = params.background
+  if (background === undefined) return params
+  if (background !== 'auto' && background !== 'transparent' && background !== 'opaque') {
+    return { ...params, background: undefined }
+  }
+  if (background === 'transparent' && params.output_format === 'jpeg') {
+    return { ...params, output_format: 'png', output_compression: null }
+  }
+  return params
+}
+
 export function normalizeParamsForSettings(
   params: TaskParams,
   settings: AppSettings,
@@ -18,7 +31,7 @@ export function normalizeParamsForSettings(
   const activeProfile = getActiveApiProfile(settings)
   const outputImageLimit = getOutputImageLimitForSettings(settings)
   const nextParams: TaskParams = {
-    ...params,
+    ...(activeProfile.provider === 'openai' ? normalizeImageBackgroundParams(params) : params),
     size: normalizeImageSize(params.size) || DEFAULT_PARAMS.size,
     n: Math.min(outputImageLimit, Math.max(1, params.n || DEFAULT_PARAMS.n)),
   }
@@ -28,6 +41,7 @@ export function normalizeParamsForSettings(
   }
 
   if (activeProfile.provider === 'fal') {
+    if (nextParams.background !== undefined) nextParams.background = undefined
     if (!options.hasInputImages && nextParams.size === 'auto') nextParams.size = DEFAULT_FAL_IMAGE_SIZE
     if (nextParams.quality === 'auto') nextParams.quality = 'high'
     nextParams.moderation = DEFAULT_PARAMS.moderation

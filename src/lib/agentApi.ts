@@ -4,6 +4,7 @@ import { createApiResponseError, getApiErrorMessage, MIME_MAP, normalizeBase64Im
 import { runImageRequest } from './imageRequest'
 import { getImageRequestTimeoutSeconds } from './imageRequestTimeout'
 import { fetchImageResponse } from './imageProxyTransport'
+import { normalizeImageBackgroundParams } from './paramCompatibility'
 
 export interface AgentApiMessage {
   role: 'user' | 'assistant'
@@ -93,6 +94,7 @@ function createImageTool(params: TaskParams, profile: ApiProfile, maskDataUrl?: 
     size: params.size,
     output_format: params.output_format,
     moderation: params.moderation,
+    ...(params.background !== undefined ? { background: params.background } : {}),
   }
 
   tool.quality = params.quality
@@ -622,7 +624,8 @@ export async function callAgentResponsesApi(opts: {
   onImagePartialImage?: (event: { toolCallId: string; image: string; partialImageIndex?: number; outputIndex?: number }) => void | Promise<void>
   onImageToolCompleted?: (image: AgentApiResultImage) => void | Promise<void>
 }): Promise<AgentApiResult> {
-  const { settings, profile, params, input, maskDataUrl, signal, onTextDelta, onOutputItems, onImageToolStarted, onImagePartialImage, onImageToolCompleted } = opts
+  const { settings, profile, input, maskDataUrl, signal, onTextDelta, onOutputItems, onImageToolStarted, onImagePartialImage, onImageToolCompleted } = opts
+  const params = normalizeImageBackgroundParams(opts.params)
   const mime = MIME_MAP[params.output_format] || 'image/png'
   const proxyConfig = readClientDevProxyConfig()
   const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
@@ -750,7 +753,8 @@ export async function callBatchImageSingle(opts: {
   onPartialImage?: (event: { image: string; partialImageIndex?: number }) => void | Promise<void>
   onImageToolCompleted?: (image: AgentApiResultImage) => void | Promise<void>
 }): Promise<BatchImageCallResult> {
-  const { profile, params, batchItemId, prompt, referenceImageDataUrls, referenceIds, signal, onImageToolStarted, onPartialImage, onImageToolCompleted } = opts
+  const { profile, batchItemId, prompt, referenceImageDataUrls, referenceIds, signal, onImageToolStarted, onPartialImage, onImageToolCompleted } = opts
+  const params = normalizeImageBackgroundParams(opts.params)
   const mime = MIME_MAP[params.output_format] || 'image/png'
   const proxyConfig = readClientDevProxyConfig()
   const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
@@ -786,6 +790,7 @@ export async function callBatchImageSingle(opts: {
         size: params.size,
         output_format: params.output_format,
         moderation: params.moderation,
+        ...(params.background !== undefined ? { background: params.background } : {}),
         quality: params.quality,
       }
       if (params.output_format !== 'png' && params.output_compression != null) {

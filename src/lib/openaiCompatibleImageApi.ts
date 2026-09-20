@@ -21,6 +21,7 @@ import {
 import { getImageRequestTimeoutSeconds } from './imageRequestTimeout'
 import { runImageRequest } from './imageRequest'
 import { fetchImageResponse } from './imageProxyTransport'
+import { normalizeImageBackgroundParams } from './paramCompatibility'
 
 const PROMPT_REWRITE_GUARD_PREFIX = 'Use the following text as the complete prompt. Do not rewrite it:'
 
@@ -229,6 +230,7 @@ function createResponsesImageTool(
     size: params.size,
     output_format: params.output_format,
     moderation: params.moderation,
+    ...(params.background !== undefined ? { background: params.background } : {}),
   }
 
   if (profile.streamImages) {
@@ -546,9 +548,11 @@ export async function callOpenAICompatibleImageApi(opts: CallApiOptions, profile
     return callCustomHttpImageApi(opts, profile, customProvider)
   }
 
+  const params = normalizeImageBackgroundParams(opts.params)
+  const requestOpts = params === opts.params ? opts : { ...opts, params }
   return profile.apiMode === 'responses'
-    ? callResponsesImageApi(opts, profile)
-    : callImagesApi(opts, profile)
+    ? callResponsesImageApi(requestOpts, profile)
+    : callImagesApi(requestOpts, profile)
 }
 
 async function callImagesApi(opts: CallApiOptions, profile: ApiProfile, customProvider?: CustomProviderDefinition | null): Promise<CallApiResult> {
@@ -627,6 +631,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
       formData.append('size', params.size)
       formData.append('output_format', params.output_format)
       formData.append('moderation', params.moderation)
+      if (params.background !== undefined) formData.append('background', params.background)
 
       if (!profile.codexCli) {
         formData.append('quality', params.quality)
@@ -688,6 +693,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
         size: params.size,
         output_format: params.output_format,
         moderation: params.moderation,
+        ...(params.background !== undefined ? { background: params.background } : {}),
       }
 
       if (!profile.codexCli) {

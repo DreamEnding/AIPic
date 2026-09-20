@@ -14,6 +14,7 @@ import {
 } from './imageApiShared'
 import { getImageRequestTimeoutSeconds } from './imageRequestTimeout'
 import { readRuntimeEnv } from './runtimeEnv'
+import { normalizeImageBackgroundParams } from './paramCompatibility'
 
 const TASKS_URL = '/api/flyreq/tasks'
 const POLL_INTERVAL_MS = 2_000
@@ -186,7 +187,7 @@ export async function getFlyreqQueuedImageResult(
 }
 
 export async function callFlyreqImageApi(opts: CallApiOptions, profile: ApiProfile): Promise<CallApiResult> {
-  const { params } = opts
+  const params = normalizeImageBackgroundParams(opts.params)
   const inputImageDataUrls = [...opts.inputImageDataUrls]
   let maskDataUrl = opts.maskDataUrl
   if (maskDataUrl) {
@@ -228,7 +229,7 @@ export async function callFlyreqImageApi(opts: CallApiOptions, profile: ApiProfi
     streamPartialImages: profile.streamPartialImages,
     gptImageQuality: params.quality,
     gptImageOutputFormat: params.output_format,
-    gptImageBackground: 'auto',
+    gptImageBackground: params.background ?? 'auto',
     ...(params.output_compression != null ? { gptImageOutputCompression: params.output_compression } : {}),
     gptImageModeration: params.moderation,
     ...(profile.responseFormatB64Json ? { responseFormat: 'b64_json' } : {}),
