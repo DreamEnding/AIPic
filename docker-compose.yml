@@ -1,6 +1,6 @@
 services:
   aipic:
-    image: "${AIPIC_IMAGE:-aipic:0.4.9}"
+    image: "${AIPIC_IMAGE:-aipic:0.4.10}"
     build:
       context: .
       dockerfile: deploy/Dockerfile

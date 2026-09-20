@@ -4,7 +4,7 @@
 
 这是可自行部署的开源、无广告版本。应用不提供 API Key，请在设置中配置自己的 OpenAI 或兼容服务。
 
-在线使用：[image.simplaj.top](https://image.simplaj.top/)（Cloudflare Pages）；自行部署：[下载 Docker 发布包](https://github.com/simplaj/AIPic/releases/tag/v0.4.9)。
+在线使用：[image.simplaj.top](https://image.simplaj.top/)（Cloudflare Pages）；自行部署：[下载 Docker 发布包](https://github.com/simplaj/AIPic/releases/tag/v0.4.10)。
 
 ## 当前版本重点
 
@@ -120,24 +120,24 @@ Cloudflare Pages 单独部署无法运行此 Node.js / SQLite 后台队列。需
 
 ## Docker 部署
 
-版本 `0.4.9` 使用**单个镜像、单个容器**：Node.js 24 同时提供前端页面、`/api/flyreq/` 后台任务、WebSocket 和 `/api-proxy/` 同源代理。容器内端口为 `8788`，默认映射到宿主机 `8080`；不再需要单独部署 Nginx 或后端容器。
+版本 `0.4.10` 使用**单个镜像、单个容器**：Node.js 24 同时提供前端页面、`/api/flyreq/` 后台任务、WebSocket 和 `/api-proxy/` 同源代理。容器内端口为 `8788`，默认映射到宿主机 `8080`；不再需要单独部署 Nginx 或后端容器。
 
 镜像以普通用户 `node`（UID/GID `1000:1000`）运行。SQLite、生成图片、视频和日志统一写入 `/data`，请始终挂载持久卷。页面历史仍保存在当前浏览器中，服务器结果有独立的自动清理周期。
 
 ### 方式一：下载 Release 镜像包（推荐）
 
-打开 [GitHub Release v0.4.9](https://github.com/simplaj/AIPic/releases/tag/v0.4.9)，下载以下文件。部署机器只需要 Docker Engine 和 Docker Compose，无需安装 Node.js 或克隆源码。
+打开 [GitHub Release v0.4.10](https://github.com/simplaj/AIPic/releases/tag/v0.4.10)，下载以下文件。部署机器只需要 Docker Engine 和 Docker Compose，无需安装 Node.js 或克隆源码。
 
 | 文件 | 用途 |
 | --- | --- |
-| `aipic-0.4.9-linux-amd64.tar.gz` | x86-64 / Intel / AMD 服务器镜像 |
-| `aipic-0.4.9-linux-arm64.tar.gz` | ARM64 / Apple Silicon / ARM 服务器镜像 |
+| `aipic-0.4.10-linux-amd64.tar.gz` | x86-64 / Intel / AMD 服务器镜像 |
+| `aipic-0.4.10-linux-arm64.tar.gz` | ARM64 / Apple Silicon / ARM 服务器镜像 |
 | `docker-compose.yml` | 直接加载发布镜像的部署配置 |
 | `SHA256SUMS` | 发布附件的 SHA-256 校验值 |
 | `release.json` | 版本、源码提交、镜像架构及 registry digest |
-| `aipic-0.4.9-source.tar.gz` | 与本次发布提交一致的完整项目源码 |
+| `aipic-0.4.10-source.tar.gz` | 与本次发布提交一致的完整项目源码 |
 
-两个镜像包选择一个即可，加载后均使用标签 `aipic:0.4.9`。`uname -m` 显示 `x86_64` 时选择 amd64；显示 `aarch64` 或 `arm64` 时选择 arm64。
+两个镜像包选择一个即可，加载后均使用标签 `aipic:0.4.10`。`uname -m` 显示 `x86_64` 时选择 amd64；显示 `aarch64` 或 `arm64` 时选择 arm64。
 
 例如在 Linux x86-64 服务器首次安装：
 
@@ -147,25 +147,25 @@ cd aipic-deploy
 
 # ARM64 机器把 amd64 改为 arm64。
 AIPIC_ARCH=amd64
-AIPIC_RELEASE_URL=https://github.com/simplaj/AIPic/releases/download/v0.4.9
-for file in "aipic-0.4.9-linux-${AIPIC_ARCH}.tar.gz" docker-compose.yml release.json SHA256SUMS; do
+AIPIC_RELEASE_URL=https://github.com/simplaj/AIPic/releases/download/v0.4.10
+for file in "aipic-0.4.10-linux-${AIPIC_ARCH}.tar.gz" docker-compose.yml release.json SHA256SUMS; do
   curl -fL --retry 3 "$AIPIC_RELEASE_URL/$file" -o "$file" || exit 1
 done
 
 # 只核对本次下载的附件，不要求同时下载另一种架构。
-awk -v image="aipic-0.4.9-linux-${AIPIC_ARCH}.tar.gz" \
+awk -v image="aipic-0.4.10-linux-${AIPIC_ARCH}.tar.gz" \
   '$2 == image || $2 == "docker-compose.yml" || $2 == "release.json"' \
   SHA256SUMS > downloaded.sha256
 sha256sum -c downloaded.sha256 || exit 1
 
 # 上述校验全部通过后加载并启动。
-docker load -i "aipic-0.4.9-linux-${AIPIC_ARCH}.tar.gz" || exit 1
+docker load -i "aipic-0.4.10-linux-${AIPIC_ARCH}.tar.gz" || exit 1
 docker compose up -d --no-build
 ```
 
 macOS 将校验命令替换为 `shasum -a 256 -c downloaded.sha256`。需要全部附件时，可下载所有 Release 附件后执行 `sha256sum -c SHA256SUMS`。
 
-访问 `http://服务器IP:8080/`，打开右上角 **API 设置**，填写 API 地址、API Key 和服务商支持的模型 ID。镜像包不需要登录镜像仓库；发布包中的 Compose 文件没有源码构建步骤，默认使用刚加载的 `aipic:0.4.9`。
+访问 `http://服务器IP:8080/`，打开右上角 **API 设置**，填写 API 地址、API Key 和服务商支持的模型 ID。镜像包不需要登录镜像仓库；发布包中的 Compose 文件没有源码构建步骤，默认使用刚加载的 `aipic:0.4.10`。
 
 Compose 只启动 `aipic` 一个服务，并创建项目范围的 `aipic-data` 命名卷。保留此部署目录供后续升级使用；常用管理命令：
 
@@ -186,17 +186,17 @@ docker run -d \
   --restart unless-stopped \
   -p 8080:8788 \
   -v aipic-data:/data \
-  aipic:0.4.9
+  aipic:0.4.10
 ```
 
 Compose 和 `docker run` 是两种替代部署方式，不要同时启动同名容器。Compose 默认卷名带项目名前缀；从一种方式切换到另一种时，需要明确挂载原有卷。
 
 ### 方式二：直接拉取 GHCR 多架构镜像
 
-镜像地址为 `ghcr.io/simplaj/aipic:0.4.9`，包含 `linux/amd64` 和 `linux/arm64`，Docker 会按主机架构选择。下载 Release 中的 `docker-compose.yml` 后，在同一部署目录创建或修改 `.env`：
+镜像地址为 `ghcr.io/simplaj/aipic:0.4.10`，包含 `linux/amd64` 和 `linux/arm64`，Docker 会按主机架构选择。下载 Release 中的 `docker-compose.yml` 后，在同一部署目录创建或修改 `.env`：
 
 ```dotenv
-AIPIC_IMAGE=ghcr.io/simplaj/aipic:0.4.9
+AIPIC_IMAGE=ghcr.io/simplaj/aipic:0.4.10
 AIPIC_PORT=8080
 ```
 
@@ -213,11 +213,11 @@ GHCR 是否允许匿名拉取取决于包的可见性。如果收到权限错误
 printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 ```
 
-生产部署建议固定版本 `0.4.9`。如需固定到不可变内容，可将 `.env` 的 `AIPIC_IMAGE` 改为 `ghcr.io/simplaj/aipic@sha256:…`，使用同次 Release 的 `release.json` 中完整 `registryDigest`；不要把示例中的省略号原样粘贴。`latest` 和 `0.4` 是会随新版本更新的别名。
+生产部署建议固定版本 `0.4.10`。如需固定到不可变内容，可将 `.env` 的 `AIPIC_IMAGE` 改为 `ghcr.io/simplaj/aipic@sha256:…`，使用同次 Release 的 `release.json` 中完整 `registryDigest`；不要把示例中的省略号原样粘贴。`latest` 和 `0.4` 是会随新版本更新的别名。
 
 ### 方式三：从源码使用 Docker Compose
 
-克隆仓库或解压 Release 的 `aipic-0.4.9-source.tar.gz`，进入包含 `docker-compose.yml` 的源码目录执行：
+克隆仓库或解压 Release 的 `aipic-0.4.10-source.tar.gz`，进入包含 `docker-compose.yml` 的源码目录执行：
 
 ```bash
 docker compose up -d --build
@@ -230,7 +230,7 @@ docker compose up -d --build
 构建当前机器架构：
 
 ```bash
-docker build -f deploy/Dockerfile -t aipic:0.4.9 .
+docker build -f deploy/Dockerfile -t aipic:0.4.10 .
 ```
 
 分别构建和导出两种架构（Docker Buildx 及跨架构构建支持需已就绪）：
@@ -238,12 +238,12 @@ docker build -f deploy/Dockerfile -t aipic:0.4.9 .
 ```bash
 mkdir -p release
 docker buildx build --platform linux/amd64 --load \
-  -f deploy/Dockerfile -t aipic:0.4.9 .
-docker save aipic:0.4.9 | gzip > release/aipic-0.4.9-linux-amd64.tar.gz
+  -f deploy/Dockerfile -t aipic:0.4.10 .
+docker save aipic:0.4.10 | gzip > release/aipic-0.4.10-linux-amd64.tar.gz
 
 docker buildx build --platform linux/arm64 --load \
-  -f deploy/Dockerfile -t aipic:0.4.9 .
-docker save aipic:0.4.9 | gzip > release/aipic-0.4.9-linux-arm64.tar.gz
+  -f deploy/Dockerfile -t aipic:0.4.10 .
+docker save aipic:0.4.10 | gzip > release/aipic-0.4.10-linux-arm64.tar.gz
 ```
 
 每次导出紧跟对应架构的构建，因为两个构建使用相同标签。构建包括前端编译及后端原生依赖安装，不执行测试。`.dockerignore` 只允许项目源码进入上下文，排除 `.env*`、本地数据库、生成图片、依赖缓存和发布产物。
@@ -254,7 +254,7 @@ docker save aipic:0.4.9 | gzip > release/aipic-0.4.9-linux-arm64.tar.gz
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `AIPIC_IMAGE` | `aipic:0.4.9` | Compose 使用的镜像标签 |
+| `AIPIC_IMAGE` | `aipic:0.4.10` | Compose 使用的镜像标签 |
 | `AIPIC_PORT` | `8080` | Compose 映射到宿主机的端口 |
 | `DEFAULT_API_URL` | `https://api.openai.com/v1` | 前端 API 设置中的初始地址；不覆盖浏览器已保存配置 |
 | `API_PROXY_URL` | `https://api.openai.com/v1` | `/api-proxy/` 的后备上游；页面选择的上游优先 |
@@ -279,7 +279,7 @@ docker compose up -d --no-build
 
 升级前等待正在执行的任务结束，保存数据卷备份；服务重启无法恢复已经提交到上游的请求。
 
-Compose 升级保持原项目目录与项目名不变，先加载新镜像，然后执行：
+发布新版本会更新 GHCR 标签和 Release 下载文件，已运行的容器不会自动更新。Compose 升级保持原项目目录与项目名不变，把 `.env` 或 Compose 中的 `AIPIC_IMAGE` 更新为本次版本；使用镜像包时先 `docker load`，使用 GHCR 时先 `docker compose pull`，然后执行：
 
 ```bash
 docker compose up -d --no-build --force-recreate --remove-orphans
@@ -344,7 +344,7 @@ git push origin main
 
 在 Cloudflare 的 **Deployments** 中查看 Production 部署，确认分支为 `main`、源码 commit 与本次推送一致且状态为 **Success**。只有推送成功还不能说明 Cloudflare 已构建成功；若构建失败，检查该次部署日志，旧生产版本通常继续服务。
 
-Docker 镜像的发布入口为 `.github/workflows/docker.yml`：`v0.4.9` 标签必须指向 `package.json` 和 `package-lock.json` 都为 `0.4.9` 的提交。工作流分别构建 amd64、arm64，核对镜像架构、版本和源码提交，生成源码包与 `SHA256SUMS`，附件齐全后才公开 Release。构建与打包步骤不执行应用测试或启动应用容器。
+Docker 镜像的发布入口为 `.github/workflows/docker.yml`：`v0.4.10` 标签必须指向 `package.json` 和 `package-lock.json` 都为 `0.4.10` 的提交。工作流分别构建 amd64、arm64，核对镜像架构、版本和源码提交，生成源码包与 `SHA256SUMS`，附件齐全后才公开 Release。构建与打包步骤不执行应用测试或启动应用容器。
 
 仓库保留的 **Optional GitHub Pages Deployment** 工作流仅支持手动触发，不参与 `image.simplaj.top` 的发布，也不会在推送标签时创建额外站点。
 
