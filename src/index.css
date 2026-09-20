@@ -779,15 +779,6 @@ html:has([data-home-main]), body:has([data-home-main]), #root:has([data-home-mai
 .retouch-segment-group > button.is-active { border-color: var(--apple-border); background: var(--apple-surface); color: var(--apple-ink); box-shadow: 0 1px 3px rgba(0,0,0,.06); }
 .retouch-segment-group > button strong { font-size: 12px; font-weight: 600; line-height: 1.3; }
 .retouch-segment-group > button small { color: var(--apple-secondary); font-size: 10px; font-weight: 400; line-height: 1.2; }
-.retouch-size-options { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 10px 12px; border: 1px solid var(--apple-border); border-radius: 11px; background: var(--apple-surface); }
-.retouch-size-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--apple-ink); font-size: 12px; font-weight: 500; }
-.retouch-size-options > p, .retouch-size-summary { color: var(--apple-secondary); font-size: 12px; line-height: 1.5; }
-.retouch-size-summary { font-variant-numeric: tabular-nums; }
-.retouch-size-picker { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--apple-border); border-radius: 11px; background: var(--apple-surface); color: var(--apple-ink); font-size: 12px; }
-.retouch-size-picker:hover { background: var(--apple-hover); border-color: var(--apple-border-strong); }
-.retouch-size-picker > svg { flex-shrink: 0; color: var(--apple-secondary); }
-.retouch-size-picker > strong { margin-left: auto; font-weight: 500; font-variant-numeric: tabular-nums; }
-
 .retouch-mode-switch { flex: 0 0 auto; }
 .retouch-mode-switch > button { min-height: 38px; }
 .retouch-mode-note { border: 1px solid var(--apple-border); border-radius: 10px; background: var(--apple-warning-soft); color: var(--apple-warning); padding: 10px 12px; font-size: 12px; line-height: 1.55; }

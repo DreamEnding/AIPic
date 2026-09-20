@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { calculateImageSize, getImageSizeSelection, normalizeImageSize, parseRatio, type ImageSizeSelection, type SizeTier } from '../lib/size'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { calculateImageSize, normalizeImageSize, parseRatio, type SizeTier } from '../lib/size'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import ViewportTooltip from './ViewportTooltip'
 
@@ -18,8 +18,7 @@ const RATIOS = [
 
 interface Props {
   currentSize: string
-  currentSelection?: ImageSizeSelection
-  onSelect: (size: string, selection?: ImageSizeSelection) => void
+  onSelect: (size: string) => void
   onClose: () => void
   allowAuto?: boolean
 }
@@ -32,18 +31,22 @@ function parseSize(size: string) {
   return { width: match[1], height: match[2] }
 }
 
-export default function SizePickerModal({ currentSize, currentSelection, onSelect, onClose, allowAuto = true }: Props) {
-  const modalRef = useRef<HTMLDivElement>(null)
-  const titleId = useId()
-  usePreventBackgroundScroll(true, modalRef)
-
-  useEffect(() => {
-    const previousFocus = document.activeElement
-    modalRef.current?.focus()
-    return () => {
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus()
+function findPresetForSize(size: string) {
+  const normalized = normalizeImageSize(size)
+  for (const tier of TIERS) {
+    for (const ratio of RATIOS) {
+      if (calculateImageSize(tier, ratio.value) === normalized) {
+        return { tier, ratio: ratio.value }
+      }
     }
-  }, [])
+  }
+  return null
+}
+
+export default function SizePickerModal({ currentSize, onSelect, onClose, allowAuto = true }: Props) {
+  usePreventBackgroundScroll(true)
+
+  const modalRef = useRef<HTMLDivElement>(null)
   const mouseDownTargetRef = useRef<EventTarget | null>(null)
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -66,19 +69,18 @@ export default function SizePickerModal({ currentSize, currentSelection, onSelec
     mouseDownTargetRef.current = null
   }
 
-  const initialSelection = currentSelection ?? getImageSizeSelection(currentSize)
-  const currentParsedSize = parseSize(normalizeImageSize(currentSize))
-  const initialRatio = initialSelection?.ratio ?? (allowAuto ? '1:1' : '4:3')
+  const currentPreset = findPresetForSize(currentSize)
+  const currentParsedSize = parseSize(currentSize)
   const [mode, setMode] = useState<Mode>(() => {
     if (!currentSize || currentSize === 'auto') return allowAuto ? 'auto' : 'ratio'
-    if (initialSelection && calculateImageSize(initialSelection.tier, initialSelection.ratio) === normalizeImageSize(currentSize)) return 'ratio'
+    if (currentPreset) return 'ratio'
     return 'resolution'
   })
 
-  // Keep custom ratios and their resolution tier when reopening the picker.
-  const [tier, setTier] = useState<SizeTier>(initialSelection?.tier ?? '1K')
-  const [ratio, setRatio] = useState(RATIOS.some((item) => item.value === initialRatio) ? initialRatio : 'custom')
-  const [customRatio, setCustomRatio] = useState(initialRatio)
+  // Ratio mode state
+  const [tier, setTier] = useState<SizeTier>(currentPreset?.tier ?? '1K')
+  const [ratio, setRatio] = useState(currentPreset?.ratio ?? (allowAuto ? '1:1' : '4:3'))
+  const [customRatio, setCustomRatio] = useState('16:9')
 
   // Resolution mode state
   const [customW, setCustomW] = useState(currentParsedSize?.width ?? '1024')
@@ -151,37 +153,9 @@ export default function SizePickerModal({ currentSize, currentSelection, onSelec
     }, 450)
   }
 
-  const changeMode = (nextMode: Mode) => {
-    if (nextMode === mode) return
-
-    // Synchronize before leaving an explicit mode, including detours through auto.
-    if (mode === 'ratio') {
-      const dimensions = parseSize(previewSize)
-      if (dimensions) {
-        setCustomW(dimensions.width)
-        setCustomH(dimensions.height)
-      }
-    } else if (mode === 'resolution' && previewSize) {
-      // Preserve the original ratio when its pixel fields have not changed.
-      if (calculateImageSize(tier, activeRatio) !== previewSize) {
-        const selection = getImageSizeSelection(previewSize)
-        if (selection) {
-          setTier(selection.tier)
-          setRatio(RATIOS.some((item) => item.value === selection.ratio) ? selection.ratio : 'custom')
-          setCustomRatio(selection.ratio)
-        }
-      }
-    }
-
-    setMode(nextMode)
-  }
-
   const applySize = () => {
     if (!previewSize) return
-    const selection = mode !== 'auto' && calculateImageSize(tier, activeRatio) === previewSize
-      ? { tier, ratio: activeRatio }
-      : getImageSizeSelection(previewSize) ?? undefined
-    onSelect(previewSize, selection)
+    onSelect(previewSize)
     onClose()
   }
 
@@ -202,32 +176,11 @@ export default function SizePickerModal({ currentSize, currentSelection, onSelec
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm animate-overlay-in" />
       <div
         ref={modalRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.stopPropagation()
-            onClose()
-          }
-          if (event.key !== 'Tab') return
-          const controls = event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [tabindex="0"]')
-          const first = controls[0]
-          const last = controls[controls.length - 1]
-          if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) {
-            event.preventDefault()
-            last?.focus()
-          } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault()
-            first?.focus()
-          }
-        }}
-        className="relative z-10 max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-white/50 bg-white/95 p-5 shadow-2xl ring-1 ring-black/5 animate-modal-in dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10"
+        className="relative z-10 w-full max-w-md rounded-3xl border border-white/50 bg-white/95 p-5 shadow-2xl ring-1 ring-black/5 animate-modal-in dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10"
       >
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <h3 id={titleId} className="text-base font-semibold text-gray-800 dark:text-gray-100">设置图像尺寸</h3>
+            <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">设置图像尺寸</h3>
             <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">当前：{currentSize || 'auto'}</p>
           </div>
           <button
@@ -245,20 +198,20 @@ export default function SizePickerModal({ currentSize, currentSelection, onSelec
           <div className="flex rounded-xl bg-gray-100/80 p-1 dark:bg-white/[0.04]">
             {allowAuto && (
               <button
-                onClick={() => changeMode('auto')}
+                onClick={() => setMode('auto')}
                 className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition ${mode === 'auto' ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
               >
                 自动
               </button>
             )}
             <button
-              onClick={() => changeMode('ratio')}
+              onClick={() => setMode('ratio')}
               className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition ${mode === 'ratio' ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
             >
               按比例
             </button>
             <button
-              onClick={() => changeMode('resolution')}
+              onClick={() => setMode('resolution')}
               className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition ${mode === 'resolution' ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
             >
               自定义宽高

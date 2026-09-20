@@ -619,6 +619,11 @@ export default function SettingsModal() {
       profiles: draft.profiles.map((profile) => profile.id === activeProfile.id ? { ...profile, ...patch } : profile),
     })
 
+  const getBaseUrlPatch = (baseUrl: string): Partial<ApiProfile> => ({
+    baseUrl,
+    ...(apiProxyLocked ? {} : { apiProxy: false }),
+  })
+
   const updateActiveProfile = (patch: Partial<ApiProfile>, commit = false) => {
     const nextDraft = getDraftWithActiveProfilePatch(patch)
     setDraft(nextDraft)
@@ -1463,8 +1468,8 @@ export default function SettingsModal() {
                   </div>
                   <input
                     value={activeProfile.baseUrl}
-                    onChange={(e) => updateActiveProfile({ baseUrl: e.target.value })}
-                    onBlur={(e) => commitActiveProfilePatch({ baseUrl: e.target.value })}
+                    onChange={(e) => updateActiveProfile(getBaseUrlPatch(e.target.value))}
+                    onBlur={(e) => commitActiveProfilePatch(getBaseUrlPatch(e.target.value))}
                     type="text"
                     placeholder={activeProfile.provider === 'fal' ? DEFAULT_FAL_BASE_URL : DEFAULT_SETTINGS.baseUrl}
                     className="apple-settings-input w-full text-sm font-mono"
@@ -1618,11 +1623,7 @@ export default function SettingsModal() {
                             </button>
                           </div>
                           <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
-                            {apiProxyLocked
-                              ? '部署端已锁定服务端转发，请求会经服务器转发。'
-                              : activeProfile.provider === 'openai'
-                                ? '新建配置默认开启，可手动关闭。服务器会转发上方 API 地址和密钥，修改地址不会关闭转发。'
-                                : '开启后，服务器会转发上方 API 地址和密钥，修改地址不会关闭转发。'}
+                            {apiProxyLocked ? '部署端已锁定服务端转发，请求会经服务器转发。' : '仅在浏览器跨域（CORS）受限或需要隐藏上游地址时开启；开启后上方 API 地址会由服务端转发配置接管。'}
                           </div>
                         </div>
                       )}

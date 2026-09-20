@@ -552,7 +552,6 @@ export function getPersistedState(state: AppState) {
   return {
     settings,
     params: state.params,
-    manualOutputSizeEnabled: state.manualOutputSizeEnabled,
     ...(settings.persistInputOnRestart && (state.appMode === 'gallery' || galleryInputDraft)
       ? {
           prompt: galleryInputDraft?.prompt ?? '',
@@ -630,7 +629,6 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
     ...currentState,
     ...persisted,
     settings,
-    manualOutputSizeEnabled: persisted.manualOutputSizeEnabled === true,
     appMode,
     galleryInputDraft: galleryInputDraft && !isEmptyAgentInputDraft(galleryInputDraft) ? galleryInputDraft : null,
     agentConversations,
@@ -679,8 +677,6 @@ interface AppState {
   // 参数
   params: TaskParams
   setParams: (p: Partial<TaskParams>) => void
-  manualOutputSizeEnabled: boolean
-  setManualOutputSizeEnabled: (enabled: boolean) => void
   reusedTaskApiProfileId: string | null
   reusedTaskApiProfileName: string | null
   reusedTaskApiProfileMissing: boolean
@@ -1211,8 +1207,6 @@ export const useStore = create<AppState>()(
       // Params
       params: { ...DEFAULT_PARAMS },
       setParams: (p) => set((s) => ({ params: { ...s.params, ...p } })),
-      manualOutputSizeEnabled: false,
-      setManualOutputSizeEnabled: (manualOutputSizeEnabled) => set({ manualOutputSizeEnabled }),
       reusedTaskApiProfileId: null,
       reusedTaskApiProfileName: null,
       reusedTaskApiProfileMissing: false,
