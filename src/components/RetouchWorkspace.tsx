@@ -1014,6 +1014,8 @@ export default function RetouchWorkspace() {
   const params = useStore((s) => s.params)
   const setPrompt = useStore((s) => s.setPrompt)
   const setParams = useStore((s) => s.setParams)
+  const manualOutputSizeEnabled = useStore((s) => s.manualOutputSizeEnabled)
+  const setManualOutputSizeEnabled = useStore((s) => s.setManualOutputSizeEnabled)
   const setLightboxImageId = useStore((s) => s.setLightboxImageId)
   const setMaskEditorImageId = useStore((s) => s.setMaskEditorImageId)
   const removeInputImage = useStore((s) => s.removeInputImage)
@@ -1114,7 +1116,11 @@ export default function RetouchWorkspace() {
   const outputSizeSelection = selectedOutputSize?.size === params.size
     ? selectedOutputSize.selection
     : inferredOutputSize
-  const outputSizeRatio = outputSizeSelection?.ratio ?? getNearestOutputRatio(previewImageAspect)
+  // 默认保留加入尺寸弹窗前的行为：档位保持，比例跟随当前预览。
+  const previewOutputRatio = getNearestOutputRatio(previewImageAspect)
+  const outputSizeRatio = manualOutputSizeEnabled
+    ? outputSizeSelection?.ratio ?? previewOutputRatio
+    : previewOutputRatio
   const outputSizeOptions = useMemo(
     () => [
       { id: 'auto' as const, label: '自动', hint: outputSizeHints.auto, value: 'auto' },
@@ -1127,7 +1133,12 @@ export default function RetouchWorkspace() {
     ],
     [outputSizeRatio],
   )
-  const activeOutputSizeId: RetouchOutputSizeId = params.size === 'auto' ? 'auto' : outputSizeSelection?.tier ?? 'custom'
+  const outputSizeTier = outputSizeSelection?.tier
+  const activeOutputSizeId: RetouchOutputSizeId = params.size === 'auto'
+    ? 'auto'
+    : outputSizeTier && (!manualOutputSizeEnabled || calculateImageSize(outputSizeTier, outputSizeRatio) === params.size)
+      ? outputSizeTier
+      : 'custom'
   const hasPreviewImage = Boolean(outputImageSrc || beforeImageSrc)
   const canCompare = Boolean(visibleOutputTask?.inputImageIds[0] && visibleOutputTask?.outputImages[0] && beforeImageSrc && outputImageSrc)
   const canUsePreviewZoom = hasPreviewImage && !(compareEnabled && canCompare)
@@ -1278,6 +1289,13 @@ export default function RetouchWorkspace() {
       setPreviewPan({ x: 0, y: 0 })
     }
   }, [canUsePreviewZoom, previewZoom])
+
+  useEffect(() => {
+    if (manualOutputSizeEnabled || activeOutputSizeId === 'auto') return
+    const selectedOption = outputSizeOptions.find((option) => option.id === activeOutputSizeId)
+    if (!selectedOption?.value || selectedOption.value === params.size) return
+    setParams({ size: selectedOption.value })
+  }, [manualOutputSizeEnabled, activeOutputSizeId, outputSizeOptions, params.size, setParams])
 
   useEffect(() => {
     if (groupedCategoryTemplates.length && !groupedCategoryTemplates.some((group) => group.group === selectedGroupName)) {
@@ -1954,7 +1972,7 @@ export default function RetouchWorkspace() {
                       aria-pressed={activeOutputSizeId === option.id}
                       onClick={() => {
                         if (!option.value) return
-                        setSelectedOutputSize(option.id === 'auto' ? null : { size: option.value, selection: { tier: option.id, ratio: outputSizeRatio } })
+                        setSelectedOutputSize(!manualOutputSizeEnabled || option.id === 'auto' ? null : { size: option.value, selection: { tier: option.id, ratio: outputSizeRatio } })
                         setParams({ size: option.value })
                         showToast(
                           option.id === 'auto'
@@ -1970,19 +1988,49 @@ export default function RetouchWorkspace() {
                   ))}
                 </div>
 
-                <button
-                  type="button"
-                  className="retouch-size-picker"
-                  aria-haspopup="dialog"
-                  aria-expanded={showSizePicker}
-                  title="选择图像比例或自定义宽高"
-                  onClick={() => setShowSizePicker(true)}
-                >
-                  <SettingsIcon className="h-4 w-4" aria-hidden="true" />
-                  <span>设置尺寸</span>
-                  <strong>{params.size === 'auto' ? '自动' : params.size.replace('x', ' × ')}</strong>
-                  <StudioSymbol name="arrow" className="h-4 w-4" />
-                </button>
+                <div className="retouch-size-options">
+                  <div className="retouch-size-toggle">
+                    <span id="manual-output-size-label">手动设置尺寸</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      className="apple-switch"
+                      aria-labelledby="manual-output-size-label"
+                      aria-describedby="manual-output-size-description"
+                      aria-checked={manualOutputSizeEnabled}
+                      onClick={() => {
+                        setShowSizePicker(false)
+                        setSelectedOutputSize(null)
+                        setManualOutputSizeEnabled(!manualOutputSizeEnabled)
+                      }}
+                    >
+                      <span className="apple-switch-thumb" />
+                    </button>
+                  </div>
+                  <p id="manual-output-size-description">
+                    {manualOutputSizeEnabled
+                      ? '固定所选比例或宽高；换图时保持尺寸。'
+                      : '沿用原有方式：1K / 2K / 4K 随当前图片比例调整。'}
+                  </p>
+                  {manualOutputSizeEnabled && (
+                    <button
+                      type="button"
+                      className="retouch-size-picker"
+                      aria-haspopup="dialog"
+                      aria-expanded={showSizePicker}
+                      title="选择图像比例或自定义宽高"
+                      onClick={() => setShowSizePicker(true)}
+                    >
+                      <SettingsIcon className="h-4 w-4" aria-hidden="true" />
+                      <span>设置尺寸</span>
+                      <strong>{params.size === 'auto' ? '自动' : params.size.replace('x', ' × ')}</strong>
+                      <StudioSymbol name="arrow" className="h-4 w-4" />
+                    </button>
+                  )}
+                  <div className="retouch-size-summary" aria-live="polite">
+                    {activeOutputSizeId === 'custom' ? '自定义像素' : '当前尺寸'}：{params.size === 'auto' ? '由模型决定' : params.size.replace('x', ' × ')}
+                  </div>
+                </div>
 
                 <div className="retouch-segment-group" role="group" aria-label="修图质量">
                   <span>质量</span>
@@ -2109,7 +2157,7 @@ export default function RetouchWorkspace() {
           </aside>
         </div>
       </div>
-      {showSizePicker && (
+      {manualOutputSizeEnabled && showSizePicker && (
         <SizePickerModal
           currentSize={params.size}
           currentSelection={selectedOutputSize?.size === params.size ? selectedOutputSize.selection : undefined}
