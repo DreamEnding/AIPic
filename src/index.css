@@ -782,8 +782,6 @@ html:has([data-home-main]), body:has([data-home-main]), #root:has([data-home-mai
 .retouch-request-options { grid-column: 1/-1; display: grid; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--apple-border); border-radius: 12px; background: var(--apple-surface); }
 .retouch-request-options-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .retouch-request-options-heading strong { color: var(--apple-ink); font-size: 13px; font-weight: 600; }
-.retouch-request-options-heading button { min-height: 36px; border-radius: 8px; padding: 6px 8px; color: var(--apple-accent-text); font-size: 12px; }
-.retouch-request-options-heading button:hover { background: var(--apple-accent-soft); }
 .retouch-request-options-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px 10px; }
 .retouch-request-options-grid label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .retouch-request-options-grid label > span { color: var(--apple-ink); font-size: 12px; font-weight: 500; }

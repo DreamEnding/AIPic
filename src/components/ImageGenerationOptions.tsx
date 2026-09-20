@@ -1,14 +1,12 @@
 import { getActiveApiProfile } from '../lib/apiProfiles'
 import { getOutputImageLimitForSettings } from '../lib/paramCompatibility'
 import { useStore } from '../store'
-import type { TaskParams } from '../types'
+import type { AppSettings, TaskParams } from '../types'
 
 /** Expose the existing request parameters without changing them on mount. */
-export default function RetouchAdvancedOptions() {
-  const settings = useStore((s) => s.settings)
+export default function ImageGenerationOptions({ settings }: { settings: AppSettings }) {
   const params = useStore((s) => s.params)
   const setParams = useStore((s) => s.setParams)
-  const setShowSettings = useStore((s) => s.setShowSettings)
   const profile = getActiveApiProfile(settings)
   const isFal = profile.provider === 'fal'
   const isCustomProvider = profile.provider !== 'openai' && !isFal
@@ -21,7 +19,6 @@ export default function RetouchAdvancedOptions() {
     <section className="retouch-request-options" aria-label="生成参数">
       <div className="retouch-request-options-heading">
         <strong>生成参数</strong>
-        <button type="button" onClick={() => setShowSettings(true, 'api')}>API 参数</button>
       </div>
       <div className="retouch-request-options-grid">
         <label>
@@ -93,7 +90,6 @@ export default function RetouchAdvancedOptions() {
         </label>
       </div>
       {isCustomProvider && <p>自定义服务商按请求模板映射生成参数。</p>}
-      <p>流式传输、中间图、Base64、服务端转发和超时可在「API 参数」中设置。</p>
     </section>
   )
 }

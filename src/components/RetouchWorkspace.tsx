@@ -5,7 +5,6 @@ import type { TaskParams, TaskRecord } from '../types'
 import { getActiveApiProfile, validateApiProfile } from '../lib/apiProfiles'
 import { calculateImageSize, normalizeImageSize, type SizeTier } from '../lib/size'
 import { editorialRetouchPresets } from '../lib/editorialRetouchPresets'
-import RetouchAdvancedOptions from './RetouchAdvancedOptions'
 import SizePickerModal from './SizePickerModal'
 import { CloseIcon, EditIcon, HistoryIcon, PhotoIcon, RefreshIcon, SettingsIcon, WrenchIcon } from './icons'
 
@@ -2034,8 +2033,6 @@ export default function RetouchWorkspace() {
                     </button>
                   ))}
                 </div>
-
-                <RetouchAdvancedOptions />
 
                 <button type="button" className="retouch-submit-button" onClick={handleSubmit}>
                   <StudioSymbol name="sparkles" className="h-4 w-4" />

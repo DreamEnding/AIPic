@@ -33,6 +33,7 @@ import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { DEFAULT_DROPDOWN_MAX_HEIGHT, getDropdownMaxHeight } from '../lib/dropdown'
 import Select from './Select'
+import ImageGenerationOptions from './ImageGenerationOptions'
 import { Checkbox } from './Checkbox'
 import ViewportTooltip from './ViewportTooltip'
 import { ChevronDownIcon, CloseIcon, CopyIcon, PlusIcon, TrashIcon, GithubIcon, ExportIcon, ImportIcon, DragHandleIcon, LinkIcon } from './icons'
@@ -1396,7 +1397,7 @@ export default function SettingsModal() {
                 <div className="apple-settings-notice px-4 py-4 text-[13px] leading-relaxed">
                   <div className="font-semibold">常用接入只需要 4 项</div>
                   <div className="mt-1 text-[var(--apple-secondary)]">
-                    选择配置，填写 API 地址和密钥，再确认模型 ID。其他选项放在高级设置里。
+                    选择配置，填写 API 地址和密钥，再确认模型 ID。生成参数与其他选项放在高级参数里。
                   </div>
                 </div>
 
@@ -1569,7 +1570,7 @@ export default function SettingsModal() {
                 </div>
               </label>
 
-              {(activeProfile.provider === 'openai' || activeProviderIsOpenAICompatible) && (
+              {activeProviderUsesApiUrl && (
                 <div className="apple-settings-card overflow-hidden">
                   <button
                     type="button"
@@ -1578,9 +1579,9 @@ export default function SettingsModal() {
                     aria-expanded={showAdvancedApiSettings}
                   >
                     <div>
-                      <div className="text-sm font-medium text-gray-800 dark:text-gray-100">高级设置</div>
+                      <div className="text-sm font-medium text-gray-800 dark:text-gray-100">高级参数</div>
                       <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-500">
-                        服务端转发、流式传输、中间图、Base64、Codex 兼容与超时
+                        生成张数、审核、压缩、背景，以及流式传输和连接选项
                       </div>
                     </div>
                     <ChevronDownIcon className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${showAdvancedApiSettings ? 'rotate-180' : ''}`} />
@@ -1588,6 +1589,8 @@ export default function SettingsModal() {
 
                   {showAdvancedApiSettings && (
                     <div className="space-y-4 border-t border-gray-100 px-4 py-4 dark:border-white/[0.06]">
+                      <ImageGenerationOptions settings={draft} />
+
                       <label className="block">
                         <span className="mb-1.5 block text-sm text-gray-700 dark:text-gray-200">配置名称</span>
                         <input
