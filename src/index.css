@@ -794,6 +794,11 @@ html:has([data-home-main]), body:has([data-home-main]), #root:has([data-home-mai
 @media (max-width: 640px) {
   .retouch-request-options-grid input, .retouch-request-options-grid select { font-size: 16px; }
 }
+.retouch-size-picker { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--apple-border); border-radius: 11px; background: var(--apple-surface); color: var(--apple-ink); font-size: 12px; }
+.retouch-size-picker:hover { background: var(--apple-hover); border-color: var(--apple-border-strong); }
+.retouch-size-picker > svg { flex-shrink: 0; color: var(--apple-secondary); }
+.retouch-size-picker > strong { margin-left: auto; font-weight: 500; font-variant-numeric: tabular-nums; }
+
 .retouch-mode-switch { flex: 0 0 auto; }
 .retouch-mode-switch > button { min-height: 38px; }
 .retouch-mode-note { border: 1px solid var(--apple-border); border-radius: 10px; background: var(--apple-warning-soft); color: var(--apple-warning); padding: 10px 12px; font-size: 12px; line-height: 1.55; }
