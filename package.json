@@ -1,5 +1,5 @@
 {
-  "name": "gpt-image-playground",
+  "name": "aipic",
   "private": true,
   "version": "0.4.10",
   "type": "module",
@@ -10,6 +10,7 @@
     "deploy:cf": "npm run build && wrangler deploy",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:security": "node --test tests/backend-security.node.cjs tests/backend-http.node.cjs tests/backend-providers.node.cjs && vitest run tests/security.test.ts src/services/export-security.test.ts",
     "test:watch": "vitest",
     "backend:install": "npm install --prefix backend",
     "build:backend": "VITE_TASK_BACKEND=flyreq npm run build",

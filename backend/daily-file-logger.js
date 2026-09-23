@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const util = require('util');
+const { redact } = require('./security/redact');
 const { sanitizeVideoLogText } = require('./video-upstream-logger');
 
 const DEFAULT_LOG_DIR = path.join(__dirname, 'logs', 'application');
@@ -13,10 +14,10 @@ const rawConsoleWarn = console.warn.bind(console);
 /**
  * 判断后端应用日志文件是否启用。
  * @param {unknown} value 环境变量中的日志开关值。
- * @returns {boolean} 未配置时返回 true，仅 false、0、no、off 会关闭日志文件。
+ * @returns {boolean} 生产环境未配置时关闭日志文件。
  */
 function isDailyFileLogEnabled(value) {
-  if (value === undefined || value === null || String(value).trim() === '') return true;
+  if (value === undefined || value === null || String(value).trim() === '') return process.env.NODE_ENV !== 'production';
   return !['false', '0', 'no', 'off'].includes(String(value).trim().toLowerCase());
 }
 
@@ -90,7 +91,7 @@ function createDailyFileLogLine(level, args, timestamp) {
   return JSON.stringify({
     timestamp: timestamp.toISOString(),
     level,
-    message: sanitizeVideoLogText(formatDailyFileLogMessage(args)),
+    message: sanitizeVideoLogText(formatDailyFileLogMessage(args.map(redact))),
   }) + '\n';
 }
 

@@ -1,0 +1,7 @@
+{
+  "name": "aipic-security",
+  "main": "limiter.js",
+  "compatibility_date": "2026-05-07",
+  "durable_objects": { "bindings": [{ "name": "AIPIC_LIMITER", "class_name": "AipicLimiter" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AipicLimiter"] }]
+}

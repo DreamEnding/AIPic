@@ -2,5 +2,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "aipic",
   "compatibility_date": "2026-05-07",
-  "pages_build_output_dir": "./dist"
+  "pages_build_output_dir": "./dist",
+  "durable_objects": {
+    "bindings": [{ "name": "AIPIC_LIMITER", "class_name": "AipicLimiter", "script_name": "aipic-security" }]
+  }
 }

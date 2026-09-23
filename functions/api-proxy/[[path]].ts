@@ -1,4 +1,8 @@
-const UPSTREAM_BASE_URL = 'https://api.openai.com/v1'
+import policy from '../../backend/security/policy.cjs'
+import redaction from '../../backend/security/redact.js'
+const { authenticate, selectUpstream, MAX_BODY_BYTES, MAX_RESPONSE_BYTES, BUILTIN_PROVIDERS, fail, validateProxyBody } = policy
+const { redact } = redaction
+
 const UPSTREAM_HEADER = 'x-aipic-upstream'
 const MAX_TEXT_BODY_CHARS = 8000
 const STREAM_HEADER = 'x-aipic-proxy-stream'
@@ -11,6 +15,11 @@ const HEARTBEAT_INTERVAL_MS = 15_000
 interface Env {
   API_PROXY_URL?: string
   DEFAULT_API_URL?: string
+  AIPIC_ACCESS_TOKEN?: string
+  AIPIC_PROVIDERS?: string
+  // Custom DNS requires an egress service that pins/validates the connected IP.
+  AIPIC_EGRESS?: { fetch(request: Request): Promise<Response> }
+  AIPIC_LIMITER?: { idFromName(name: string): unknown; get(id: unknown): { fetch(request: Request): Promise<Response> } }
 }
 
 const hopByHopHeaders = new Set([
@@ -32,39 +41,8 @@ function withCors(headers: Headers) {
   return headers
 }
 
-function normalizeBaseUrl(baseUrl: string) {
-  const trimmed = baseUrl.trim()
-  if (!trimmed) return ''
-
-  const input = /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`
-
-  try {
-    const url = new URL(input)
-    if (url.protocol !== 'https:') return ''
-
-    const pathSegments = url.pathname.split('/').filter(Boolean)
-    const v1Index = pathSegments.indexOf('v1')
-    const normalizedSegments = v1Index >= 0
-      ? pathSegments.slice(0, v1Index + 1)
-      : pathSegments.length
-        ? [...pathSegments, 'v1']
-        : ['v1']
-    return `${url.origin}/${normalizedSegments.join('/')}`
-  } catch {
-    return ''
-  }
-}
-
-function getDefaultUpstreamBaseUrl(env: Env) {
-  return normalizeBaseUrl(env.API_PROXY_URL ?? '') ||
-    normalizeBaseUrl(env.DEFAULT_API_URL ?? '') ||
-    UPSTREAM_BASE_URL
-}
-
 function getUpstreamBaseUrl(request: Request, env: Env) {
-  return normalizeBaseUrl(request.headers.get(UPSTREAM_HEADER) ?? '') || getDefaultUpstreamBaseUrl(env)
+  return selectUpstream(env, request.headers.get('x-aipic-provider'), request.headers.get(UPSTREAM_HEADER))
 }
 
 function buildUpstreamUrl(request: Request, env: Env) {
@@ -82,8 +60,36 @@ function copyRequestHeaders(request: Request) {
   headers.delete(UPSTREAM_HEADER)
   headers.delete(STREAM_HEADER)
   headers.delete(TIMEOUT_HEADER)
+  headers.delete('x-aipic-access-token')
+  headers.delete('x-aipic-provider')
+  headers.delete('cookie')
+  for (const name of [...headers.keys()]) {
+    if (/^(x-aipic-|cf-access-|x-forwarded-)/.test(name)) headers.delete(name)
+  }
   for (const header of hopByHopHeaders) headers.delete(header)
   return headers
+}
+
+export function limitUpstreamResponse(response: Response, maxBytes = MAX_RESPONSE_BYTES): Response {
+  if (!response.body) return response
+  const reader = response.body.getReader()
+  let bytes = 0
+  return new Response(new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read()
+        if (done) { reader.releaseLock(); controller.close(); return }
+        bytes += value.byteLength
+        if (bytes > maxBytes) {
+          await reader.cancel()
+          reader.releaseLock()
+          throw new Error('上游响应超过大小限制')
+        }
+        controller.enqueue(value)
+      } catch (error) { controller.error(error) }
+    },
+    async cancel(reason) { try { await reader.cancel(reason) } finally { reader.releaseLock() } },
+  }), { status: response.status, statusText: response.statusText, headers: response.headers })
 }
 
 /** 仅为显式启用的长耗时生图请求建立心跳传输，其他代理请求保持原有协议。 */
@@ -105,7 +111,7 @@ function getTimeoutMs(request: Request) {
  * 立即返回心跳流，在同一个请求内转发上游状态和正文，避免等待首张图片时连接长期无响应。
  * 正文按 UTF-8 分块传输，计时覆盖响应头及完整正文；取消和超时都会释放上游读取与定时器。
  */
-function streamUpstreamResponse(request: Request, upstreamUrl: URL) {
+function streamUpstreamResponse(request: Request, upstreamUrl: URL, send: typeof fetch, release: () => void) {
   const encoder = new TextEncoder()
   const abortController = new AbortController()
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
@@ -118,6 +124,7 @@ function streamUpstreamResponse(request: Request, upstreamUrl: URL) {
   let responseStarted = false
 
   function cleanup(removeSignal = true) {
+    release()
     clearInterval(heartbeatTimer)
     clearTimeout(deadlineTimer)
     if (removeSignal) request.signal.removeEventListener('abort', abortFromRequest)
@@ -166,12 +173,12 @@ function streamUpstreamResponse(request: Request, upstreamUrl: URL) {
       await writeFrame({ type: 'chunk', text: JSON.stringify({ error: {
         message,
         upstream: upstreamUrl.origin,
-        detail: error instanceof Error ? error.message : String(error),
+        detail: redact(error instanceof Error ? error.message : String(error)),
       } }) }, true)
     } else {
       await writeFrame({ type: 'error', message: timedOut
         ? message
-        : `上游响应读取失败：${error instanceof Error ? error.message : String(error)}` }, true)
+        : `上游响应读取失败：${redact(error instanceof Error ? error.message : String(error))}` }, true)
     }
     await writeFrame({ type: 'end' }, true)
     if (!finished) {
@@ -183,7 +190,7 @@ function streamUpstreamResponse(request: Request, upstreamUrl: URL) {
 
   async function pump() {
     try {
-      const response = await fetch(upstreamUrl, {
+      const response = await send(upstreamUrl, {
         method: request.method,
         headers: copyRequestHeaders(request),
         body: request.body,
@@ -283,57 +290,119 @@ function streamUpstreamResponse(request: Request, upstreamUrl: URL) {
   })) })
 }
 
-export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
+export const onRequest: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: withCors(new Headers()) })
   }
 
-  const upstreamUrl = buildUpstreamUrl(request, env)
-  if (shouldStreamProxy(request)) return streamUpstreamResponse(request, upstreamUrl)
+  let release: (() => void) | undefined
+  let deadline: ReturnType<typeof setTimeout> | undefined
+  let upstreamUrl: URL
+  try {
+    authenticate(request.headers, env)
+    upstreamUrl = buildUpstreamUrl(request, env)
+    if (!Object.values(BUILTIN_PROVIDERS).some(base => new URL(base as string).origin === upstreamUrl.origin) && !env.AIPIC_EGRESS) {
+      fail(503, '自定义上游需要配置具备 DNS 连接校验的 AIPIC_EGRESS 服务')
+    }
+    if (!env.AIPIC_LIMITER) fail(503, '服务尚未配置 AIPIC_LIMITER 全局限流')
+    const limiter = env.AIPIC_LIMITER!.get(env.AIPIC_LIMITER!.idFromName('aipic-global'))
+    const admission = await limiter.fetch(new Request('https://limiter/acquire', { method: 'POST', body: JSON.stringify({ action: 'acquire' }) }))
+    if (!admission.ok) fail(admission.status === 429 ? 429 : 503, '请求频率或并发超过限制')
+    const { lease } = await admission.json() as { lease: string }
+    let released = false
+    release = () => {
+      if (released) return
+      released = true
+      clearTimeout(deadline)
+      const pending = limiter.fetch(new Request('https://limiter/release', { method: 'POST', body: JSON.stringify({ action: 'release', lease }) })).then(() => {}).catch(() => {})
+      if (waitUntil) waitUntil(pending)
+    }
+    request.signal.addEventListener('abort', release, { once: true })
+    if (Number(request.headers.get('content-length')) > MAX_BODY_BYTES) fail(413, '请求体过大')
+    if (request.body) {
+      const reader = request.body.getReader()
+      const chunks: Uint8Array[] = []
+      let size = 0
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          size += value.byteLength
+          if (size > MAX_BODY_BYTES) { await reader.cancel(); fail(413, '请求体过大') }
+          chunks.push(value)
+        }
+      } finally { reader.releaseLock() }
+      const body = new Blob(chunks)
+      await validateProxyBody(body, request.headers.get('content-type') || '')
+      request = new Request(request, { body })
+    }
+  } catch (error) {
+    release?.()
+    const status = (error as { statusCode?: number }).statusCode || 500
+    return Response.json({ error: error instanceof Error ? error.message : '请求被拒绝' }, { status, headers: withCors(new Headers(status === 429 ? { 'retry-after': '60' } : {})) })
+  }
+  const send: typeof fetch = async (input, init) => {
+    const response = env.AIPIC_EGRESS
+      ? await env.AIPIC_EGRESS.fetch(new Request(input, { ...init, ...(init?.body ? { duplex: 'half' } : {}) } as RequestInit))
+      : await fetch(input, init)
+    if (response.status >= 300 && response.status < 400) { await response.body?.cancel(); throw new Error('禁止上游重定向') }
+    // Never expose an upstream error body: it can echo keys, prompts or images.
+    if (!response.ok) {
+      await response.body?.cancel()
+      const headers = new Headers({ 'content-type': 'application/json; charset=utf-8' })
+      for (const name of ['retry-after', 'x-request-id', 'x-ratelimit-remaining']) {
+        const value = response.headers.get(name)
+        if (value) headers.set(name, value)
+      }
+      return new Response(JSON.stringify({ error: { message: `上游接口返回 HTTP ${response.status}` } }), { status: response.status, statusText: response.statusText, headers })
+    }
+    return limitUpstreamResponse(response)
+  }
+  const finish = (response: Response) => {
+    if (!response.body) { release?.(); return response }
+    const reader = response.body.getReader()
+    return new Response(new ReadableStream({
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read()
+          if (done) { release?.(); controller.close() } else controller.enqueue(value)
+        } catch (error) { release?.(); controller.error(error) }
+      },
+      async cancel(reason) { release?.(); await reader.cancel(reason) },
+    }, { highWaterMark: 0 }), { status: response.status, statusText: response.statusText, headers: response.headers })
+  }
+  if (shouldStreamProxy(request)) return streamUpstreamResponse(request, upstreamUrl, send, release!)
 
   let upstreamResponse: Response
+  const controller = new AbortController()
+  deadline = setTimeout(() => { controller.abort(); release?.() }, getTimeoutMs(request))
   try {
-    upstreamResponse = await fetch(upstreamUrl, {
+    upstreamResponse = await send(upstreamUrl, {
       method: request.method,
       headers: copyRequestHeaders(request),
       body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
       redirect: 'manual',
+      signal: AbortSignal.any([request.signal, controller.signal]),
     })
   } catch (error) {
+    release?.()
     const headers = withCors(new Headers({ 'content-type': 'application/json; charset=utf-8' }))
     return new Response(JSON.stringify({
       error: {
         message: 'API 代理无法连接上游服务',
         upstream: upstreamUrl.origin,
-        detail: error instanceof Error ? error.message : String(error),
+        detail: redact(error instanceof Error ? error.message : String(error)),
       },
     }), { status: 502, headers })
   }
 
   const responseHeaders = new Headers(upstreamResponse.headers)
   for (const header of hopByHopHeaders) responseHeaders.delete(header)
+  for (const header of ['set-cookie', 'location', 'content-length', 'content-encoding']) responseHeaders.delete(header)
 
-  const contentType = responseHeaders.get('content-type')?.toLowerCase() ?? ''
-  if (!upstreamResponse.ok && !contentType.includes('application/json')) {
-    const text = await upstreamResponse.text()
-    const headers = withCors(new Headers({ 'content-type': 'application/json; charset=utf-8' }))
-    return new Response(JSON.stringify({
-      error: {
-        message: `上游接口返回 HTTP ${upstreamResponse.status}`,
-        upstream: upstreamUrl.origin,
-        status: upstreamResponse.status,
-        body: text.slice(0, MAX_TEXT_BODY_CHARS),
-      },
-    }), {
-      status: upstreamResponse.status,
-      statusText: upstreamResponse.statusText,
-      headers,
-    })
-  }
-
-  return new Response(upstreamResponse.body, {
+  return finish(new Response(upstreamResponse.body, {
     status: upstreamResponse.status,
     statusText: upstreamResponse.statusText,
     headers: withCors(responseHeaders),
-  })
+  }))
 }

@@ -33,6 +33,11 @@ RUN apk add --no-cache libstdc++ \
     && chown node:node /data /app/dist
 COPY --from=backend-dependencies /app/backend/node_modules ./backend/node_modules
 COPY backend/*.js backend/*.json backend/LICENSE backend/README.md ./backend/
+COPY backend/security ./backend/security
+COPY backend/providers ./backend/providers
+COPY backend/routes ./backend/routes
+COPY backend/services ./backend/services
+COPY backend/storage ./backend/storage
 COPY package.json LICENSE README.md ./
 COPY --from=build /app/dist ./dist-template
 COPY deploy/inject-runtime-config.mjs ./deploy/inject-runtime-config.mjs
@@ -41,7 +46,7 @@ COPY --chmod=755 deploy/docker-entrypoint.sh /usr/local/bin/aipic-entrypoint
 ENV NODE_ENV=production \
     AIPIC_HOST=0.0.0.0 \
     PORT=8788 \
-    AIPIC_STATIC_DIR=/app/dist \
+    AIPIC_STATIC_DIR=/data/dist \
     ENABLE_API_PROXY=true \
     LOCK_API_PROXY=true \
     FLYREQ_TASK_DB=/data/tasks.sqlite \

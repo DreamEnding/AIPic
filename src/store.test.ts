@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { strToU8, zipSync } from 'fflate'
+import { strToU8, strFromU8, unzipSync, zipSync } from 'fflate'
 import { DEFAULT_PARAMS } from './types'
 import { createDefaultFalProfile, createDefaultOpenAIProfile, DEFAULT_RESPONSES_MODEL, DEFAULT_SETTINGS, normalizeSettings } from './lib/apiProfiles'
 import type { AgentConversation, ExportData, StoredImage, StoredImageThumbnail, TaskRecord } from './types'
@@ -99,10 +99,34 @@ import { clearAgentConversations, clearImages, getAllAgentConversations, getAllT
 import { callAgentResponsesApi, callBatchImageSingle } from './lib/agentApi'
 import { callImageApi } from './lib/api'
 import * as imageDb from './lib/db'
-import { cleanStaleAgentInputDrafts, deleteAgentRoundFromConversation, editOutputs, getActiveAgentRounds, getErrorToastMessage, getPersistedState, getTaskApiProfile, importData, initStore, markInterruptedOpenAIRunningTasks, migratePersistedState, regenerateAgentAssistantMessage, remapAgentRoundMentionsForPathChange, removeTask, reuseConfig, submitAgentMessage, submitTask, useStore } from './store'
+import { cleanStaleAgentInputDrafts, deleteAgentRoundFromConversation, editOutputs, exportData, getActiveAgentRounds, getErrorToastMessage, getPersistedState, getTaskApiProfile, importData, initStore, markInterruptedOpenAIRunningTasks, migratePersistedState, regenerateAgentAssistantMessage, remapAgentRoundMentionsForPathChange, removeTask, reuseConfig, submitAgentMessage, submitTask, useStore } from './store'
 
 const imageA = { id: 'image-a', dataUrl: 'data:image/png;base64,a' }
 const imageB = { id: 'image-b', dataUrl: 'data:image/png;base64,b' }
+
+it('default backup pipeline strips API keys from the actual ZIP manifest', async () => {
+  const previous = useStore.getState()
+  const profile = createDefaultOpenAIProfile({ apiKey: 'unique-export-secret' })
+  useStore.setState({ settings: normalizeSettings({ ...DEFAULT_SETTINGS, profiles: [profile], activeProfileId: profile.id }), showToast: vi.fn() })
+  let exported: Blob | undefined
+  const createUrl = vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => { exported = blob as Blob; return 'blob:export-test' })
+  const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  vi.stubGlobal('document', { createElement: () => ({ click: vi.fn() }) })
+  try {
+    await exportData({ exportConfig: true, exportTasks: false })
+    expect(exported).toBeDefined()
+    const files = unzipSync(new Uint8Array(await exported!.arrayBuffer()))
+    const manifest = strFromU8(files['manifest.json'])
+    expect(manifest).not.toContain('unique-export-secret')
+    expect(JSON.parse(manifest).settings.profiles[0].apiKey).toBe('')
+    expect(useStore.getState().settings.profiles[0].apiKey).toBe('unique-export-secret')
+  } finally {
+    createUrl.mockRestore()
+    revokeUrl.mockRestore()
+    vi.unstubAllGlobals()
+    useStore.setState(previous)
+  }
+})
 
 describe('error toast messages', () => {
   it('drops long error detail after the failure title', () => {

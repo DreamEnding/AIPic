@@ -107,10 +107,13 @@ if (mode === 'prepare') {
     compose = compose.replace(/^    image:.*$/m, `    image: "\${AIPIC_IMAGE:-aipic:${version}}"`);
     await writeFile(join(dir, 'docker-compose.yml'), `${compose}\n`);
     await writeFile(join(dir, 'README.md'), `# AIPic ${version}\n\n版本：\`${tag}\`；源码提交：\`${commit}\`。\n\n下载 \`docker-compose.yml\` 和与服务器匹配的镜像包。Intel/AMD 使用 amd64；ARM/Apple Silicon 使用 arm64。\n\n\`\`\`sh\ndocker load -i aipic-${version}-linux-amd64.tar.gz\ndocker compose up -d\n\`\`\`\n\nARM64 请将文件名中的 amd64 换为 arm64。两个镜像包均加载为 \`aipic:${version}\`。打开 http://localhost:8080/，在页面配置 API 地址、密钥和模型。数据保存在 \`aipic-data\` 卷中。\n\n也可直接使用 GHCR 多架构镜像：\n\n\`\`\`sh\nAIPIC_IMAGE=${image}:${version} docker compose up -d\n\`\`\`\n\n固定镜像摘要：\`${image}@${registryDigest}\`。源码包为 \`${sourceName}\`。下载全部附件后可执行 \`sha256sum -c SHA256SUMS\` 核对文件完整性。\n\n生产站点 https://image.simplaj.top/ 由 Cloudflare Pages 从 main 自动部署，保留同源 /api-proxy；Cloudflare Pages 不运行 Node 后台任务队列。需要持久化后台队列时使用本 Docker 部署。可选 GitHub Pages 只提供静态前端，需要支持浏览器 CORS 的上游 API。\n\n本发布流程仅构建、打包和核对产物元数据，没有运行测试或启动应用容器。\n`);
+    await appendFile(join(dir, 'README.md'), '\n部署前须设置 AIPIC_ACCESS_TOKEN，并通过已认证的反向代理为浏览器请求注入 X-Aipic-Access-Token。自定义 API 地址须写入服务端 AIPIC_PROVIDERS allowlist。根 LICENSE 为 MIT，LICENSE-backend-AGPL 为后端及服务端代理模块的 AGPL-3.0 许可证。\n');
+    await writeFile(join(dir, 'LICENSE'), git('show', `${commit}:LICENSE`));
+    await writeFile(join(dir, 'LICENSE-backend-AGPL'), git('show', `${commit}:backend/LICENSE`));
     for (const arch of ['amd64', 'arm64']) await rm(join(dir, `image-${arch}.json`));
     const files = [];
     for (const name of (await readdir(dir)).sort()) {
-      if (!/^(aipic-[\d.]+-(linux-(amd64|arm64)|source)\.tar\.gz|docker-compose\.yml|README\.md)$/.test(name)) fail(`Unexpected release asset: ${name}`);
+      if (!/^(aipic-[\d.]+-(linux-(amd64|arm64)|source)\.tar\.gz|docker-compose\.yml|README\.md|LICENSE|LICENSE-backend-AGPL)$/.test(name)) fail(`Unexpected release asset: ${name}`);
       files.push({ name, bytes: (await stat(join(dir, name))).size, sha256: await hashFile(join(dir, name)) });
     }
     await saveJson(join(dir, 'release.json'), {

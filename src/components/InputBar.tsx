@@ -1,338 +1,26 @@
-import { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
-import { useStore, submitTask, submitAgentMessage, stopAgentResponse, addImageFromFile, createInputImageFromFile, deleteImageIfUnreferenced, updateTaskInStore, removeMultipleTasks, getCachedImage, ensureImageCached, getActiveAgentRounds } from '../store'
-import { DEFAULT_PARAMS } from '../types'
-import { getActiveApiProfile, normalizeSettings } from '../lib/apiProfiles'
-import { DEFAULT_FAL_IMAGE_SIZE, getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
-import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, getSelectedTextMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, insertTextMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
-import { normalizeImageSize } from '../lib/size'
-import { createMaskPreviewDataUrl } from '../lib/canvasImage'
-import { dismissAllTooltips } from '../lib/tooltipDismiss'
-import { getSafeBoundingClientRect } from '../lib/domRect'
-import { collectAgentRoundOutputImageSlots } from '../lib/agentImageReferences'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useHintTooltip } from '../hooks/useHintTooltip'
+import { collectAgentRoundOutputImageSlots } from '../lib/agentImageReferences'
+import { getActiveApiProfile, normalizeSettings } from '../lib/apiProfiles'
+import { createMaskPreviewDataUrl } from '../lib/canvasImage'
+import { getSafeBoundingClientRect } from '../lib/domRect'
 import { downloadImageIds, formatExportFileTime } from '../lib/downloadImages'
-import Select from './Select'
+import { DEFAULT_FAL_IMAGE_SIZE, getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
+import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, insertTextMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
+import { normalizeImageSize } from '../lib/size'
+import { getContentEditableCursor, getContentEditablePlainText, getContentEditableSelection, getMentionTagHtml, setContentEditableCursor, setContentEditableSelection, syncMentionTagSelection } from '../services/prompt-editor'
+import { addImageFromFile, createInputImageFromFile, deleteImageIfUnreferenced, ensureImageCached, getActiveAgentRounds, getCachedImage, removeMultipleTasks, stopAgentResponse, submitAgentMessage, submitTask, updateTaskInStore, useStore } from '../store'
+import { DEFAULT_PARAMS } from '../types'
 import SizePickerModal from './SizePickerModal'
-import ViewportTooltip from './ViewportTooltip'
 import { CloseIcon } from './icons'
-
-
-function getMentionTagTextLength(el: Element) {
-  return el.textContent?.length ?? 0
-}
-
-function getNodeVisibleTextLength(node: Node): number {
-  if (node.nodeType === Node.TEXT_NODE) return node.textContent?.length ?? 0
-  if (node instanceof HTMLElement && node.classList.contains('mention-tag')) {
-    return getMentionTagTextLength(node)
-  }
-  return Array.from(node.childNodes).reduce((sum, child) => sum + getNodeVisibleTextLength(child), 0)
-}
-
-function getVisibleOffsetBeforeNode(root: HTMLElement, target: Node): number {
-  let offset = 0
-  let found = false
-
-  const walk = (node: Node) => {
-    if (found) return
-    if (node === target) {
-      found = true
-      return
-    }
-    if (node.nodeType === Node.TEXT_NODE) {
-      offset += node.textContent?.length ?? 0
-      return
-    }
-    if (node instanceof HTMLElement && node.classList.contains('mention-tag')) {
-      offset += getMentionTagTextLength(node)
-      return
-    }
-    node.childNodes.forEach(walk)
-  }
-
-  root.childNodes.forEach(walk)
-  return offset
-}
-
-function getMentionTagForBoundary(root: HTMLElement, container: Node) {
-  const el = container.nodeType === Node.ELEMENT_NODE
-    ? container as Element
-    : container.parentElement
-  const tag = el?.closest('.mention-tag')
-  return tag && root.contains(tag) ? tag : null
-}
-
-function getBoundaryOffsetInMention(tag: Element, container: Node, offset: number) {
-  try {
-    const range = document.createRange()
-    range.selectNodeContents(tag)
-    range.setEnd(container, offset)
-    return range.toString().length
-  } catch {
-    return getMentionTagTextLength(tag)
-  }
-}
-
-function getContentEditableBoundaryOffset(
-  root: HTMLElement,
-  container: Node,
-  offset: number,
-  edge: 'start' | 'end',
-  collapsed: boolean,
-) {
-  if (container === root) {
-    let visibleOffset = 0
-    for (const child of Array.from(root.childNodes).slice(0, offset)) {
-      visibleOffset += getNodeVisibleTextLength(child)
-    }
-    return visibleOffset
-  }
-
-  if (!root.contains(container)) {
-    // 处理选区边界在输入框外部的情况（如 Ctrl+A）
-    const position = root.compareDocumentPosition(container)
-    if (position & Node.DOCUMENT_POSITION_PRECEDING) return 0
-    if (position & Node.DOCUMENT_POSITION_FOLLOWING) return root.textContent?.length ?? 0
-
-    // 如果是父容器，根据偏移量判断是在输入框前还是后
-    if (container.contains(root)) {
-      const children = Array.from(container.childNodes)
-      const rootIndex = children.indexOf(root as any)
-      return offset <= rootIndex ? 0 : root.textContent?.length ?? 0
-    }
-    return edge === 'start' ? 0 : root.textContent?.length ?? 0
-  }
-
-  const mentionTag = getMentionTagForBoundary(root, container)
-  if (mentionTag) {
-    const mentionStart = getVisibleOffsetBeforeNode(root, mentionTag)
-    const mentionLength = getMentionTagTextLength(mentionTag)
-    if (!collapsed) return edge === 'start' ? mentionStart : mentionStart + mentionLength
-    const mentionOffset = getBoundaryOffsetInMention(mentionTag, container, offset)
-    return mentionStart + (mentionOffset < mentionLength / 2 ? 0 : mentionLength)
-  }
-
-  if (container.nodeType === Node.TEXT_NODE) {
-    return getVisibleOffsetBeforeNode(root, container) + offset
-  }
-
-  const element = container.nodeType === Node.ELEMENT_NODE ? container as Element : null
-  if (element) {
-    let visibleOffset = element === root ? 0 : getVisibleOffsetBeforeNode(root, element)
-    for (const child of Array.from(element.childNodes).slice(0, offset)) {
-      visibleOffset += getNodeVisibleTextLength(child)
-    }
-    return visibleOffset
-  }
-
-  return root.textContent?.length ?? 0
-}
-
-/** 获取 contentEditable 中光标的纯文本偏移量 */
-function getContentEditableCursor(el: HTMLElement): number {
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) return el.textContent?.length ?? 0
-  try {
-    const range = sel.getRangeAt(0)
-    if (!el.contains(range.startContainer)) return el.textContent?.length ?? 0
-    return getContentEditableBoundaryOffset(el, range.startContainer, range.startOffset, 'start', range.collapsed)
-  } catch {
-    return el.textContent?.length ?? 0
-  }
-}
-
-function getContentEditableSelection(el: HTMLElement): { start: number; end: number } {
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) {
-    const end = el.textContent?.length ?? 0
-    return { start: end, end }
-  }
-  try {
-    const range = sel.getRangeAt(0)
-    const start = getContentEditableBoundaryOffset(el, range.startContainer, range.startOffset, 'start', range.collapsed)
-    const end = range.collapsed
-      ? start
-      : getContentEditableBoundaryOffset(el, range.endContainer, range.endOffset, 'end', false)
-    return { start, end }
-  } catch {
-    const end = el.textContent?.length ?? 0
-    return { start: end, end }
-  }
-}
-
-function getContentEditablePlainText(el: HTMLElement): string {
-  let text = ''
-  const appendNodeText = (node: Node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      text += node.textContent ?? ''
-      return
-    }
-    if (node instanceof HTMLElement && node.classList.contains('mention-tag')) {
-      text += node.dataset.mentionText ?? node.textContent ?? ''
-      return
-    }
-    node.childNodes.forEach(appendNodeText)
-  }
-  el.childNodes.forEach(appendNodeText)
-  return text.replace(/\r\n?/g, '\n')
-}
-
-function escapeHtml(text: string) {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function getMentionTagHtml(text: string) {
-  return `<span contenteditable="false" class="mention-tag" data-mention-text="${escapeHtml(getSelectedTextMentionLabel(text))}">${escapeHtml(text)}</span>`
-}
-
-function syncMentionTagSelection(el: HTMLElement) {
-  const tags = el.querySelectorAll<HTMLElement>('.mention-tag')
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) {
-    tags.forEach((tag) => tag.classList.remove('selected'))
-    return
-  }
-
-  const range = sel.getRangeAt(0)
-  if (range.collapsed) {
-    tags.forEach((tag) => tag.classList.remove('selected'))
-    return
-  }
-
-  tags.forEach((tag) => {
-    let isSelected = false
-    try {
-      isSelected = range.intersectsNode(tag)
-    } catch {
-      isSelected = false
-    }
-    tag.classList.toggle('selected', isSelected)
-  })
-}
-
-/** 在 contentEditable 中设置光标到指定纯文本偏移量 */
-function setContentEditableCursor(el: HTMLElement, offset: number) {
-  const sel = window.getSelection()
-  if (!sel) return
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-  let remaining = offset
-  let node: Text | null = null
-  while (walker.nextNode()) {
-    node = walker.currentNode as Text
-    const mentionTag = node.parentElement?.closest('.mention-tag')
-    if (mentionTag) {
-      if (remaining <= node.length) {
-        const range = document.createRange()
-        if (remaining < node.length / 2) {
-          range.setStartBefore(mentionTag)
-        } else {
-          range.setStartAfter(mentionTag)
-        }
-        range.collapse(true)
-        sel.removeAllRanges()
-        sel.addRange(range)
-        return
-      }
-      remaining -= node.length
-      continue
-    }
-    if (remaining <= node.length) {
-      const range = document.createRange()
-      range.setStart(node, remaining)
-      range.collapse(true)
-      sel.removeAllRanges()
-      sel.addRange(range)
-      return
-    }
-    remaining -= node.length
-  }
-  // 如果偏移超出，放到末尾
-  if (node) {
-    const range = document.createRange()
-    range.setStart(node, node.length)
-    range.collapse(true)
-    sel.removeAllRanges()
-    sel.addRange(range)
-  }
-}
-
-function setContentEditableSelection(el: HTMLElement, start: number, end: number) {
-  const sel = window.getSelection()
-  if (!sel) return
-
-  type Boundary =
-    | { type: 'offset'; node: Node; offset: number }
-    | { type: 'before'; element: Element }
-    | { type: 'after'; element: Element }
-
-  const findBoundary = (targetOffset: number, edge: 'start' | 'end'): Boundary => {
-    let remaining = targetOffset
-    let lastBoundary: Boundary = { type: 'offset', node: el, offset: 0 }
-
-    const walk = (current: Node): Boundary | null => {
-      if (current.nodeType === Node.TEXT_NODE) {
-        const node = current as Text
-        lastBoundary = { type: 'offset', node, offset: node.length }
-        if (remaining <= node.length) return { type: 'offset', node, offset: remaining }
-        remaining -= node.length
-        return null
-      }
-
-      if (current instanceof HTMLElement && current.classList.contains('mention-tag')) {
-        const length = getMentionTagTextLength(current)
-        if (remaining <= 0) return { type: 'before', element: current }
-        if (remaining < length) return edge === 'start' ? { type: 'before', element: current } : { type: 'after', element: current }
-        if (remaining === length) return { type: 'after', element: current }
-        remaining -= length
-        return null
-      }
-
-      for (const child of Array.from(current.childNodes)) {
-        const boundary = walk(child)
-        if (boundary) return boundary
-      }
-      return null
-    }
-
-    return walk(el) ?? lastBoundary
-  }
-
-  const applyBoundary = (range: Range, boundary: Boundary, target: 'start' | 'end') => {
-    if (boundary.type === 'before') {
-      target === 'start' ? range.setStartBefore(boundary.element) : range.setEndBefore(boundary.element)
-      return
-    }
-    if (boundary.type === 'after') {
-      target === 'start' ? range.setStartAfter(boundary.element) : range.setEndAfter(boundary.element)
-      return
-    }
-    target === 'start' ? range.setStart(boundary.node, boundary.offset) : range.setEnd(boundary.node, boundary.offset)
-  }
-
-  const startBoundary = findBoundary(start, 'start')
-  const endBoundary = findBoundary(end, 'end')
-  const range = document.createRange()
-  applyBoundary(range, startBoundary, 'start')
-  applyBoundary(range, endBoundary, 'end')
-  sel.removeAllRanges()
-  sel.addRange(range)
-}
+import ButtonTooltip from './input/ButtonTooltip'
+import OutputParameters from './input/OutputParameters'
+import PromptInput from './input/PromptInput'
+import ReferenceImages from './input/ReferenceImages'
+import SubmitControls from './input/SubmitControls'
 
 /** 通用悬浮气泡提示 */
-function ButtonTooltip({ visible, text }: { visible: boolean; text: ReactNode }) {
-  if (!visible) return null
 
-  return (
-    <ViewportTooltip visible className="z-10 whitespace-nowrap">
-      {text}
-    </ViewportTooltip>
-  )
-}
 
 /** API 支持的最大参考图数量 */
 const API_MAX_IMAGES = 16
@@ -507,7 +195,6 @@ export default function InputBar() {
 
   const [isDragging, setIsDragging] = useState(false)
   const [isSingleLine, setIsSingleLine] = useState(true)
-  const [submitHover, setSubmitHover] = useState(false)
   const [attachHover, setAttachHover] = useState(false)
   const [imageHintId, setImageHintId] = useState<string | null>(null)
   const [mobileCollapsed, setMobileCollapsed] = useState(false)
@@ -1398,9 +1085,6 @@ export default function InputBar() {
     }
   }, [])
 
-  const selectClass = 'px-3 py-1.5 rounded-xl border border-white/[0.1] bg-white/[0.045] hover:bg-white/[0.08] text-xs text-zinc-100 transition-all duration-200 shadow-sm'
-  const disabledParamClass = 'px-3 py-1.5 rounded-xl border border-white/[0.08] bg-white/[0.035] text-xs text-zinc-500 opacity-50 cursor-not-allowed transition-all duration-200 shadow-sm'
-  const enabledParamClass = 'bg-white/[0.045] text-zinc-100 hover:bg-white/[0.08]'
 
   const getTouchDropIndex = (touch: React.Touch) => {
     const target = document
@@ -1723,191 +1407,51 @@ export default function InputBar() {
 
   const renderImageThumbs = () => {
     return (
-      <div ref={imagesRef}>
-        <div className="grid grid-cols-[repeat(auto-fill,52px)] justify-between gap-x-2 gap-y-3 mb-3">
-          {inputImages.map((img, idx) => renderImageThumb(img, idx))}
-          {renderClearAllButton()}
-        </div>
-        {touchDragPreview?.src && createPortal(
-          <div
-            className="fixed z-[140] h-[52px] w-[52px] overflow-hidden rounded-xl shadow-xl pointer-events-none opacity-90"
-            style={{ left: touchDragPreview.x, top: touchDragPreview.y, transform: 'translate(-50%, -50%)' }}
-          >
-            <img src={touchDragPreview.src} className="h-full w-full object-cover" alt="" />
-          </div>,
-          document.body,
-        )}
-      </div>
+      <ReferenceImages
+        imagesRef={imagesRef}
+        inputImages={inputImages}
+        renderImageThumb={renderImageThumb}
+        renderClearAllButton={renderClearAllButton}
+        touchDragPreview={touchDragPreview}
+      />
     )
   }
 
   const renderParams = (cols: string) => (
-    <div className={`grid ${cols} gap-2 text-xs flex-1`}>
-      <label
-        className="relative flex flex-col gap-0.5"
-        onMouseEnter={sizeHint.show}
-        onMouseLeave={sizeHint.hide}
-        onTouchStart={sizeHint.startTouch}
-        onTouchEnd={sizeHint.clearTimer}
-        onTouchCancel={sizeHint.hide}
-        onClick={sizeHint.show}
-      >
-        <span className="ml-1 text-zinc-500">尺寸</span>
-        <button
-          type="button"
-          onClick={() => { dismissAllTooltips(); setShowSizePicker(true) }}
-          className="px-3 py-1.5 rounded-xl border border-white/[0.1] bg-white/[0.045] hover:bg-white/[0.08] focus:outline-none text-xs text-left text-zinc-100 transition-all duration-200 shadow-sm font-mono"
-          title="选择尺寸"
-        >
-          {displaySizeLabel}
-        </button>
-        <ButtonTooltip
-          visible={isFalTextToImage && sizeHint.visible}
-          text={<>fal.ai 的文生图模式不支持 <code className="rounded bg-white/10 px-1 py-0.5 font-mono">auto</code> 参数</>}
-        />
-      </label>
-      <label
-        className="relative flex flex-col gap-0.5"
-        onMouseEnter={qualityHint.show}
-        onMouseLeave={qualityHint.hide}
-        onTouchStart={qualityHint.startTouch}
-        onTouchEnd={qualityHint.clearTimer}
-        onTouchCancel={qualityHint.hide}
-        onClick={qualityHint.show}
-      >
-        <span className="ml-1 text-zinc-500">质量</span>
-        <Select
-          value={settings.codexCli ? 'auto' : isFalProvider && params.quality === 'auto' ? 'high' : params.quality}
-          onChange={(val) => {
-            if (!settings.codexCli) setParams({ quality: val as any })
-          }}
-          options={qualityOptions}
-          disabled={settings.codexCli}
-          tone="dark"
-          className={settings.codexCli ? disabledParamClass : selectClass}
-        />
-        <ButtonTooltip
-          visible={(settings.codexCli || isFalProvider) && qualityHint.visible}
-          text={isFalProvider ? <>fal.ai 不支持 <code className="rounded bg-white/10 px-1 py-0.5 font-mono">auto</code> 质量参数</> : 'Codex CLI 不支持质量参数'}
-        />
-      </label>
-      <label className="flex flex-col gap-0.5">
-        <span className="ml-1 text-zinc-500">格式</span>
-        <Select
-          value={params.output_format}
-          onChange={(val) => setParams({ output_format: val as any })}
-          options={[
-            { label: 'PNG', value: 'png' },
-            { label: 'JPEG', value: 'jpeg' },
-            { label: 'WebP', value: 'webp' },
-          ]}
-          tone="dark"
-          className={selectClass}
-        />
-      </label>
-      <label
-        className="relative flex flex-col gap-0.5"
-        onMouseEnter={compressionHint.show}
-        onMouseLeave={compressionHint.hide}
-        onTouchStart={compressionHint.startTouch}
-        onTouchEnd={compressionHint.clearTimer}
-        onTouchCancel={compressionHint.hide}
-        onClick={compressionHint.show}
-      >
-        <span className="ml-1 text-zinc-500">压缩率</span>
-        <input
-          value={outputCompressionInput}
-          onChange={(e) => setOutputCompressionInput(e.target.value)}
-          onBlur={commitOutputCompression}
-          disabled={compressionDisabled}
-          type="number"
-          min={0}
-          max={100}
-          placeholder="0-100"
-          className={`px-3 py-1.5 rounded-xl border border-white/[0.1] focus:outline-none text-xs transition-all duration-200 shadow-sm ${
-            compressionDisabled
-              ? 'bg-white/[0.035] text-zinc-500 opacity-50 cursor-not-allowed'
-              : enabledParamClass
-            }`}
-        />
-        <ButtonTooltip
-          visible={compressionHint.visible}
-          text={isFalProvider ? 'fal.ai 不支持压缩率参数' : '仅 JPEG 和 WebP 支持压缩率'}
-        />
-      </label>
-      <label
-        className="relative flex flex-col gap-0.5"
-        onMouseEnter={moderationHint.show}
-        onMouseLeave={moderationHint.hide}
-        onTouchStart={moderationHint.startTouch}
-        onTouchEnd={moderationHint.clearTimer}
-        onTouchCancel={moderationHint.hide}
-        onClick={moderationHint.show}
-      >
-        <span className="ml-1 text-zinc-500">审核</span>
-        <Select
-          value={moderationDisabled ? 'auto' : params.moderation}
-          onChange={(val) => {
-            if (!moderationDisabled) setParams({ moderation: val as any })
-          }}
-          options={[
-            { label: '自动', value: 'auto' },
-            { label: '低', value: 'low' },
-          ]}
-          disabled={moderationDisabled}
-          tone="dark"
-          className={moderationDisabled ? disabledParamClass : selectClass}
-        />
-        <ButtonTooltip
-          visible={moderationDisabled && moderationHint.visible}
-          text="fal.ai 不支持审核参数"
-        />
-      </label>
-      <label
-        className="relative flex flex-col gap-0.5"
-        onMouseEnter={showAgentNHint}
-        onMouseLeave={hideNLimitHint}
-        onTouchStart={startAgentNHintTouch}
-        onTouchEnd={clearAgentNHintTouchTimer}
-        onTouchCancel={() => {
-          clearAgentNHintTouchTimer()
-          hideNLimitHint()
-        }}
-        onClick={showAgentNHint}
-      >
-        <span className="ml-1 text-zinc-500">数量</span>
-        <input
-          value={nInput}
-          onChange={(e) => handleNInputChange(e.target.value)}
-          onFocus={() => setNInputFocused(true)}
-          onBlur={() => {
-            setNInputFocused(false)
-            commitN()
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowUp') {
-              handleNLimitIncreaseAttempt(() => e.preventDefault())
-            }
-          }}
-          onWheel={(e) => {
-            if (e.deltaY < 0) {
-              handleNLimitIncreaseAttempt(() => e.preventDefault())
-            }
-          }}
-          disabled={agentAutoImageCount}
-          type={agentAutoImageCount ? 'text' : 'number'}
-          min={agentAutoImageCount ? undefined : 1}
-          max={agentAutoImageCount ? undefined : outputImageLimit}
-          className={`px-3 py-1.5 rounded-xl border border-white/[0.1] focus:outline-none text-xs transition-all duration-200 shadow-sm ${
-            agentAutoImageCount
-              ? 'bg-white/[0.035] text-zinc-500 opacity-50 cursor-not-allowed'
-              : enabledParamClass
-          }`}
-        />
-        <ButtonTooltip visible={nLimitHint.visible} text={nLimitHintText} />
-        <ButtonTooltip visible={streamConcurrentByN && !nLimitHint.visible} text="数量大于 1 时会将多图生成拆分为并发单图" />
-      </label>
-    </div>
+    <OutputParameters
+      cols={cols}
+      sizeHint={sizeHint}
+      setShowSizePicker={setShowSizePicker}
+      displaySizeLabel={displaySizeLabel}
+      isFalTextToImage={isFalTextToImage}
+      qualityHint={qualityHint}
+      settings={settings}
+      isFalProvider={isFalProvider}
+      params={params}
+      setParams={setParams}
+      qualityOptions={qualityOptions}
+      compressionHint={compressionHint}
+      outputCompressionInput={outputCompressionInput}
+      setOutputCompressionInput={setOutputCompressionInput}
+      commitOutputCompression={commitOutputCompression}
+      compressionDisabled={compressionDisabled}
+      moderationHint={moderationHint}
+      moderationDisabled={moderationDisabled}
+      showAgentNHint={showAgentNHint}
+      hideNLimitHint={hideNLimitHint}
+      startAgentNHintTouch={startAgentNHintTouch}
+      clearAgentNHintTouchTimer={clearAgentNHintTouchTimer}
+      nInput={nInput}
+      handleNInputChange={handleNInputChange}
+      setNInputFocused={setNInputFocused}
+      commitN={commitN}
+      handleNLimitIncreaseAttempt={handleNLimitIncreaseAttempt}
+      agentAutoImageCount={agentAutoImageCount}
+      outputImageLimit={outputImageLimit}
+      nLimitHint={nLimitHint}
+      nLimitHintText={nLimitHintText}
+      streamConcurrentByN={streamConcurrentByN}
+    />
   )
 
   return (
@@ -2089,52 +1633,17 @@ export default function InputBar() {
                 </div>
               </div>
             )}
-            <div
-              ref={textareaRef}
-              contentEditable
-              suppressContentEditableWarning
-              onInput={(e) => {
-                isUserInputRef.current = true
-                const el = e.currentTarget
-                const range = getContentEditableSelection(el)
-                setCursorPos(range.start)
-                syncMentionTagSelection(el)
-                const text = getContentEditablePlainText(el)
-                setPrompt(text)
-                setAtImageMenuIndex(0)
-                setAtImageMenuDismissed(false)
-              }}
-              onSelect={(e) => {
-                const el = e.currentTarget
-                const range = getContentEditableSelection(el)
-                setCursorPos(range.start)
-                syncMentionTagSelection(el)
-                setAtImageMenuIndex(0)
-                setAtImageMenuDismissed(false)
-              }}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePromptPaste}
-              onCopy={handlePromptCopy}
-              onClick={(e) => {
-                const el = textareaRef.current
-                if (!el) return
-                const target = e.target as HTMLElement
-                if (target.classList.contains('mention-tag')) {
-                  const sel = window.getSelection()
-                  if (sel) {
-                    const range = document.createRange()
-                    range.selectNode(target)
-                    sel.removeAllRanges()
-                    sel.addRange(range)
-                    syncMentionTagSelection(el)
-                  }
-                  return
-                }
-
-                syncMentionTagSelection(el)
-              }}
-              aria-label={promptPlaceholder}
-              className="col-start-1 row-start-1 min-h-[42px] w-full overflow-hidden ios-rounded-scroll-fix whitespace-pre-wrap break-words rounded-xl border border-white/[0.1] bg-white/[0.045] pl-4 pr-10 py-3 text-sm leading-relaxed text-zinc-100 shadow-sm outline-none transition-[border-color,box-shadow] duration-200 focus:border-cyan-300/50 focus:ring-1 focus:ring-cyan-400/25"
+            <PromptInput
+              textareaRef={textareaRef}
+              isUserInputRef={isUserInputRef}
+              setCursorPos={setCursorPos}
+              setPrompt={setPrompt}
+              setAtImageMenuIndex={setAtImageMenuIndex}
+              setAtImageMenuDismissed={setAtImageMenuDismissed}
+              handleKeyDown={handleKeyDown}
+              handlePromptPaste={handlePromptPaste}
+              handlePromptCopy={handlePromptCopy}
+              promptPlaceholder={promptPlaceholder}
             />
             {prompt.length === 0 && (
               <div className="prompt-placeholder col-start-1 row-start-1 pointer-events-none pl-4 pr-10 py-3 text-sm leading-relaxed text-gray-400 dark:text-gray-500">
@@ -2182,35 +1691,15 @@ export default function InputBar() {
                     </svg>
                   </button>
                 </div>
-                <div
-                  className="relative"
-                  onMouseEnter={() => setSubmitHover(true)}
-                  onMouseLeave={() => setSubmitHover(false)}
-                >
-                  <ButtonTooltip visible={(activeAgentIsRunning || !hasSubmitApiConfig) && submitHover} text={submitTooltipText} />
-                  <button
-                    onClick={() => activeAgentIsRunning ? stopActiveAgentResponse() : hasSubmitApiConfig ? submitCurrentMode() : setShowSettings(true)}
-                    disabled={activeAgentIsRunning ? false : hasSubmitApiConfig ? !canSubmit : false}
-                    className={`p-2.5 rounded-xl transition-all shadow-sm hover:shadow ${
-                      activeAgentIsRunning
-                        ? 'bg-red-500 text-white hover:bg-red-600'
-                        : !hasSubmitApiConfig
-                        ? 'bg-gray-300 dark:bg-white/[0.06] text-white cursor-pointer'
-                        : 'bg-cyan-500 text-zinc-950 hover:bg-cyan-300 disabled:bg-gray-300 dark:disabled:bg-white/[0.04] disabled:opacity-50 disabled:cursor-not-allowed'
-                    }`}
-                    aria-label={submitButtonAriaLabel}
-                  >
-                    {activeAgentIsRunning ? (
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                        <rect x="7" y="7" width="10" height="10" rx="1.5" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
+                <SubmitControls compact
+                  isRunning={activeAgentIsRunning}
+                  configured={hasSubmitApiConfig}
+                  disabled={activeAgentIsRunning ? false : hasSubmitApiConfig ? !canSubmit : false}
+                  label={submitButtonAriaLabel}
+                  text={activeAgentIsRunning ? '停止生成' : maskDraft ? '遮罩编辑' : '提交修图'}
+                  tooltip={submitTooltipText}
+                  onClick={() => activeAgentIsRunning ? stopActiveAgentResponse() : hasSubmitApiConfig ? submitCurrentMode() : setShowSettings(true)}
+                />
               </div>
             </div>
 
@@ -2290,36 +1779,15 @@ export default function InputBar() {
                     </>
                   )}
                 </div>
-                <div
-                  className="relative flex-1"
-                  onMouseEnter={() => setSubmitHover(true)}
-                  onMouseLeave={() => setSubmitHover(false)}
-                >
-                  <ButtonTooltip visible={(activeAgentIsRunning || !hasSubmitApiConfig) && submitHover} text={submitTooltipText} />
-                  <button
-                    onClick={() => activeAgentIsRunning ? stopActiveAgentResponse() : hasSubmitApiConfig ? submitCurrentMode() : setShowSettings(true)}
-                    disabled={activeAgentIsRunning ? false : hasSubmitApiConfig ? !canSubmit : false}
-                    aria-label={submitButtonAriaLabel}
-                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all shadow-sm ${
-                      activeAgentIsRunning
-                        ? 'bg-red-500 text-white hover:bg-red-600'
-                        : !hasSubmitApiConfig
-                        ? 'bg-gray-300 dark:bg-white/[0.06] text-white cursor-pointer'
-                        : 'bg-cyan-500 text-zinc-950 hover:bg-cyan-300 disabled:bg-gray-300 dark:disabled:bg-white/[0.04] disabled:opacity-50 disabled:cursor-not-allowed'
-                    }`}
-                  >
-                    {activeAgentIsRunning ? (
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                        <rect x="7" y="7" width="10" height="10" rx="1.5" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                      </svg>
-                    )}
-                    {activeAgentIsRunning ? '停止生成' : maskDraft ? '遮罩编辑' : '提交修图'}
-                  </button>
-                </div>
+                <SubmitControls
+                  isRunning={activeAgentIsRunning}
+                  configured={hasSubmitApiConfig}
+                  disabled={activeAgentIsRunning ? false : hasSubmitApiConfig ? !canSubmit : false}
+                  label={submitButtonAriaLabel}
+                  text={activeAgentIsRunning ? '停止生成' : maskDraft ? '遮罩编辑' : '提交修图'}
+                  tooltip={submitTooltipText}
+                  onClick={() => activeAgentIsRunning ? stopActiveAgentResponse() : hasSubmitApiConfig ? submitCurrentMode() : setShowSettings(true)}
+                />
               </div>
             </div>
           </div>

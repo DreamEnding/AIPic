@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { onRequest } from '../functions/api-proxy/[[path]]'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { proxyEnv } from './fixtures/proxy-env'
+let onRequest: typeof import('../functions/api-proxy/[[path]]').onRequest
+beforeEach(async () => { vi.resetModules(); onRequest = (await import('../functions/api-proxy/[[path]]')).onRequest })
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -7,7 +9,8 @@ const decoder = new TextDecoder()
 function makeRequest(path = 'images/generations', options: { body?: BodyInit, signal?: AbortSignal, stream?: string, timeout?: string } = {}) {
   const headers = new Headers({
     authorization: 'Bearer test-key',
-    'x-aipic-upstream': 'https://upstream.example/v1',
+    'x-aipic-access-token': 'test-access',
+    'x-aipic-upstream': 'https://api.openai.com/v1',
     'x-aipic-proxy-stream': options.stream ?? '1',
   })
   if (options.timeout) headers.set('x-aipic-timeout-seconds', options.timeout)
@@ -18,7 +21,7 @@ function makeRequest(path = 'images/generations', options: { body?: BodyInit, si
 }
 
 function handle(request = makeRequest()) {
-  return onRequest({ request, env: {} } as Parameters<typeof onRequest>[0]) as Promise<Response>
+  return onRequest({ request, env: proxyEnv() } as Parameters<typeof onRequest>[0]) as Promise<Response>
 }
 
 function defer<T>() {
@@ -70,7 +73,7 @@ describe('long image request proxy transport', () => {
     expect(await reader.read()).toEqual({ done: true, value: undefined })
     expect(vi.getTimerCount()).toBe(0)
     const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit]
-    expect(url.href).toBe('https://upstream.example/v1/images/generations')
+    expect(url.href).toBe('https://api.openai.com/v1/images/generations')
     expect(new Headers(init.headers).get('authorization')).toBe('Bearer test-key')
     for (const name of ['x-aipic-proxy-stream', 'x-aipic-timeout-seconds', 'x-aipic-upstream']) {
       expect(new Headers(init.headers).has(name)).toBe(false)
@@ -124,7 +127,7 @@ describe('long image request proxy transport', () => {
     expect(await (received.get('image') as File).text()).toBe('image-bytes')
   })
 
-  it('preserves upstream 524 and wraps only a bounded non-JSON error body', async () => {
+  it('preserves upstream 524 without exposing the upstream error body', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(`<html>${'x'.repeat(10_000)}</html>`, {
       status: 524, statusText: 'A Timeout Occurred', headers: { 'content-type': 'text/html' },
     })))
@@ -134,17 +137,17 @@ describe('long image request proxy transport', () => {
       headers: { 'content-type': 'application/json; charset=utf-8' },
     })
     const error = JSON.parse(textFrom(frames)).error
-    expect(error.status).toBe(524)
-    expect(error.body.length).toBe(8000)
+    expect(error.message).toBe('上游接口返回 HTTP 524')
+    expect(error.body).toBeUndefined()
     expect(frames.at(-1)).toEqual({ type: 'end' })
   })
 
-  it('preserves a JSON upstream error without wrapping it again', async () => {
+  it('sanitizes JSON upstream errors', async () => {
     const error = { error: { message: 'quota exhausted', code: 'insufficient_quota' } }
     vi.stubGlobal('fetch', vi.fn(async () => Response.json(error, { status: 429 })))
     const frames = await readFrames(await handle())
     expect(frames[1].status).toBe(429)
-    expect(JSON.parse(textFrom(frames))).toEqual(error)
+    expect(JSON.parse(textFrom(frames))).toEqual({ error: { message: '上游接口返回 HTTP 429' } })
   })
 
   it('preserves diagnostic and retry headers while removing decoded-body transport metadata', async () => {
@@ -311,7 +314,7 @@ describe('long image request proxy transport', () => {
     })))
     const response = await handle(makeRequest('images/generations', { stream: '0' }))
     expect(response.status).toBe(524)
-    expect(await response.json()).toMatchObject({ error: { status: 524, body: '<html>upstream timeout</html>' } })
+    expect(await response.json()).toMatchObject({ error: { message: '上游接口返回 HTTP 524' } })
   })
 
   it.each(['not-a-number', '0', '-1'])('uses the 30-minute default for invalid timeout %s', async timeout => {

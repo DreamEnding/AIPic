@@ -28,17 +28,19 @@ export default function App() {
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search)
-    const nextSettings = buildSettingsFromUrlParams(useStore.getState().settings, searchParams)
-
-    setSettings(nextSettings)
-
     if (hasUrlSettingParams(searchParams)) {
-      clearUrlSettingParams(searchParams)
+      const cleanParams = new URLSearchParams(searchParams)
+      clearUrlSettingParams(cleanParams)
 
-      const nextSearch = searchParams.toString()
+      const nextSearch = cleanParams.toString()
       const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`
       window.history.replaceState(null, '', nextUrl)
     }
+    if (searchParams.has('apiKey') || /apiKey/i.test(searchParams.get('settings') || '')) {
+      useStore.getState().showToast('此链接携带 API Key，可能已被浏览器历史或服务器日志记录。已清理地址栏，请勿分享；必要时轮换密钥。', 'error')
+    }
+    const nextSettings = buildSettingsFromUrlParams(useStore.getState().settings, searchParams)
+    setSettings(nextSettings)
 
     const customProviderConfigUrl = getCustomProviderConfigUrl()
     if (customProviderConfigUrl && !customProviderConfigUrlImportStarted) {

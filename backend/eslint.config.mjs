@@ -5,7 +5,7 @@ import globals from "globals";
 const eslintConfig = defineConfig([
   js.configs.recommended,
   {
-    files: ["**/*.js"],
+    files: ["**/*.js", "**/*.cjs"],
     languageOptions: {
       globals: globals.node,
       ecmaVersion: "latest",

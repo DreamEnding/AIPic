@@ -1,3 +1,4 @@
+const { redact } = require('./security/redact');
 const fs = require('fs');
 const path = require('path');
 
@@ -19,7 +20,7 @@ const warnedLogErrors = new Set();
  * @returns {boolean} 未配置时返回 true，仅 false、0、no、off 会关闭日志。
  */
 function isVideoUpstreamLogEnabled(value) {
-  if (value === undefined || value === null || String(value).trim() === '') return true;
+  if (value === undefined || value === null || String(value).trim() === '') return process.env.NODE_ENV !== 'production';
   return !['false', '0', 'no', 'off'].includes(String(value).trim().toLowerCase());
 }
 
@@ -92,7 +93,7 @@ function appendVideoUpstreamLog(event, level, diagnostics, options = {}) {
   const logDir = getVideoUpstreamLogDir(options.logDir);
   const timestamp = new Date();
   const filePath = getVideoUpstreamLogFilePath(logDir, timestamp);
-  const line = JSON.stringify({ timestamp: timestamp.toISOString(), level, event, ...diagnostics }) + '\n';
+  const line = JSON.stringify(redact({ timestamp: timestamp.toISOString(), level, event, ...diagnostics })) + '\n';
   return ensureVideoUpstreamLogDir(logDir)
     .then(() => fs.promises.appendFile(filePath, line, 'utf8'))
     .catch((error) => {
@@ -366,7 +367,7 @@ function logVideoUpstreamRequest(stage, url, init = {}, context = {}, options = 
     context,
     body: summarizeVideoRequestBody(init.body),
   });
-  console.info('[video-upstream] 上游请求\n' + JSON.stringify(diagnostics, null, 2));
+  console.info('[video-upstream] 上游请求\n' + JSON.stringify(redact(diagnostics), null, 2));
   appendVideoUpstreamLog('request', 'info', diagnostics, options);
 }
 
@@ -397,7 +398,7 @@ function logVideoUpstreamResponse(stage, url, response, responseText, context = 
   });
   const isError = Boolean(options.isError || !response.ok);
   const logger = isError ? console.error : console.info;
-  logger('[video-upstream] 上游响应\n' + JSON.stringify(diagnostics, null, 2));
+  logger('[video-upstream] 上游响应\n' + JSON.stringify(redact(diagnostics), null, 2));
   appendVideoUpstreamLog('response', isError ? 'error' : 'info', diagnostics, options);
 }
 
@@ -412,7 +413,7 @@ function logVideoTaskSummary(context, options = {}) {
   const diagnostics = sanitizeVideoLogValue(context);
   const isError = Boolean(options.isError);
   const logger = isError ? console.error : console.info;
-  logger('[video-task] 任务终态\n' + JSON.stringify(diagnostics, null, 2));
+  logger('[video-task] 任务终态\n' + JSON.stringify(redact(diagnostics), null, 2));
   appendVideoUpstreamLog('task-summary', isError ? 'error' : 'info', diagnostics, options);
 }
 

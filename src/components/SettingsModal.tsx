@@ -2124,6 +2124,7 @@ export default function SettingsModal() {
               </h3>
               <div className="text-[13px] text-gray-500 dark:text-gray-400 mb-5 leading-relaxed">
                 是否包含 API Key？如果选择「不包含」，可额外配置是否使用 New API 变量。
+                包含密钥的链接会暴露给接收者，并可能留在浏览器历史、服务器日志或 Referer 中，请勿公开分享。
               </div>
 
               {!copyImportUrlOptions.includeApiKey && (

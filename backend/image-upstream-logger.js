@@ -1,3 +1,4 @@
+const { redact } = require('./security/redact');
 const fs = require('fs');
 const path = require('path');
 const {
@@ -88,7 +89,7 @@ function ensureImageUpstreamLogDir(logDir) {
 function appendImageUpstreamLog(event, level, diagnostics, options = {}) {
   const logDir = getImageUpstreamLogDir(options.logDir);
   const timestamp = new Date();
-  const line = JSON.stringify({ timestamp: timestamp.toISOString(), level, event, ...diagnostics }) + '\n';
+  const line = JSON.stringify(redact({ timestamp: timestamp.toISOString(), level, event, ...diagnostics })) + '\n';
   return ensureImageUpstreamLogDir(logDir)
     .then(() => fs.promises.appendFile(getImageUpstreamLogFilePath(logDir, timestamp), line, 'utf8'))
     .catch((error) => {
@@ -200,7 +201,7 @@ function logImageUpstreamRequest(stage, url, init = {}, context = {}, options = 
     context,
     body: summarizeImageRequestBody(init.body),
   });
-  console.info('[image-upstream] 上游请求\n' + JSON.stringify(diagnostics, null, 2));
+  console.info('[image-upstream] 上游请求\n' + JSON.stringify(redact(diagnostics), null, 2));
   void appendImageUpstreamLog('request', 'info', diagnostics, options);
 }
 
@@ -226,7 +227,7 @@ function logImageUpstreamResponse(stage, url, response, responseText, context = 
     body: summarizeImageResponseBody(responseText, getImageUpstreamLogMaxChars(options.maxChars)),
   });
   const isError = Boolean(options.isError || !response.ok);
-  (isError ? console.error : console.info)('[image-upstream] 上游响应\n' + JSON.stringify(diagnostics, null, 2));
+  (isError ? console.error : console.info)('[image-upstream] 上游响应\n' + JSON.stringify(redact(diagnostics), null, 2));
   void appendImageUpstreamLog('response', isError ? 'error' : 'info', diagnostics, options);
 }
 

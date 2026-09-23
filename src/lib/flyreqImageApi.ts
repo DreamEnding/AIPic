@@ -156,7 +156,7 @@ export async function getFlyreqQueuedImageResult(
       continue
     }
 
-    if (task.status === 'failed' || task.status === 'expired') {
+    if (task.status === 'failed' || task.status === 'expired' || task.status === 'interrupted') {
       const detail = typeof task.error === 'string' && task.error.trim() ? task.error : undefined
       throw new Error(detail ?? (task.status === 'expired' ? '后端任务已过期，无法恢复结果。' : '后端图片生成失败。'))
     }

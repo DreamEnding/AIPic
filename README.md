@@ -4,6 +4,8 @@
 
 这是可自行部署的开源、无广告版本。应用不提供 API Key，请在设置中配置自己的 OpenAI 或兼容服务。
 
+后端与同源代理现在默认要求应用访问认证及服务端 provider allowlist。升级前请阅读 [安全部署、环境变量与兼容说明](docs/security.md)：Node 需配置 `AIPIC_ACCESS_TOKEN`，Pages 还需部署全局限流 Durable Object；浏览器访问通过已认证反向代理注入访问凭据。
+
 在线使用：[image.simplaj.top](https://image.simplaj.top/)（Cloudflare Pages）；自行部署：[下载 Docker 发布包](https://github.com/simplaj/AIPic/releases/tag/v0.4.10)。
 
 ## 当前版本重点

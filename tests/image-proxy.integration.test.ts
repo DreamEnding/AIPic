@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { proxyEnv } from './fixtures/proxy-env'
 import { onRequest } from '../functions/api-proxy/[[path]]'
 import { callImageApi } from '../src/lib/api'
 import { createDefaultGrokProfile, createDefaultOpenAIProfile, DEFAULT_SETTINGS } from '../src/lib/apiProfiles'
@@ -15,9 +16,10 @@ function connectProxy(upstream: (init: RequestInit) => Promise<Response>) {
     if (String(input).startsWith('data:')) return nativeFetch(input, init)
     if (typeof input === 'string' && input.startsWith('/api-proxy/')) {
       const request = new Request(`https://aipic.example${input}`, init)
-      return onRequest({ request, env: {} } as never)
+      request.headers.set('x-aipic-access-token', 'test-access')
+      return onRequest({ request, env: proxyEnv() } as never)
     }
-    expect(String(input)).toMatch(/^https:\/\/models.example\/v1\//)
+    expect(String(input)).toMatch(/^https:\/\/api.openai.com\/v1\//)
     upstreamCalls.push(init!)
     return upstream(init!)
   })
@@ -39,12 +41,13 @@ describe('GPT/Grok through actual Pages handler and client decoder', () => {
       })
     })
     const profile = (provider === 'gpt' ? createDefaultOpenAIProfile : createDefaultGrokProfile)({
-      apiKey: 'test-key', apiProxy: true, baseUrl: 'https://models.example/v1', timeout: 600,
+      apiKey: 'test-key', apiProxy: true, baseUrl: 'https://api.openai.com/v1', timeout: 600,
     })
     const result = callImageApi({
       settings: { ...DEFAULT_SETTINGS, ...profile, profiles: [profile], activeProfileId: profile.id },
       params: { ...DEFAULT_PARAMS, size: '2880x2880' }, prompt: 'test', inputImageDataUrls: [],
     })
+    await vi.waitFor(() => expect(signal).toBeDefined())
     await vi.advanceTimersByTimeAsync(601_000)
     expect(signal.aborted).toBe(false)
     await vi.advanceTimersByTimeAsync(49_000)
@@ -68,7 +71,7 @@ describe('GPT/Grok through actual Pages handler and client decoder', () => {
       expect((data.get('image[]') as Blob).size).toBe(5)
       return new Response(jsonImage, { headers: { 'content-type': 'application/json' } })
     })
-    const profile = createDefaultGrokProfile({ apiKey: 'test-key', apiProxy: true, baseUrl: 'https://models.example/v1' })
+    const profile = createDefaultGrokProfile({ apiKey: 'test-key', apiProxy: true, baseUrl: 'https://api.openai.com/v1' })
     const result = await callImageApi({
       settings: { ...DEFAULT_SETTINGS, ...profile, profiles: [profile], activeProfileId: profile.id },
       params: { ...DEFAULT_PARAMS, size: '3840x2160' }, prompt: 'test', inputImageDataUrls: [`data:image/png;base64,${image}`],
@@ -82,11 +85,11 @@ describe('GPT/Grok through actual Pages handler and client decoder', () => {
     const calls = connectProxy(async () => new Response('<title>524: A timeout occurred</title>', {
       status: 524, headers: { 'content-type': 'text/html' },
     }))
-    const profile = createDefaultGrokProfile({ apiKey: 'test-key', apiProxy: true, baseUrl: 'https://models.example/v1' })
+    const profile = createDefaultGrokProfile({ apiKey: 'test-key', apiProxy: true, baseUrl: 'https://api.openai.com/v1' })
     await expect(callImageApi({
       settings: { ...DEFAULT_SETTINGS, ...profile, profiles: [profile], activeProfileId: profile.id },
       params: { ...DEFAULT_PARAMS, size: '3840x2160' }, prompt: 'test', inputImageDataUrls: [],
-    })).rejects.toMatchObject({ status: 524, rawResponsePayload: expect.stringContaining('A timeout occurred') })
+    })).rejects.toMatchObject({ status: 524, rawResponsePayload: expect.stringContaining('HTTP 524') })
     expect(calls).toHaveLength(1)
   })
 })
