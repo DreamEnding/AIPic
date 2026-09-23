@@ -10,7 +10,7 @@ function makeRequest(path = 'images/generations', options: { body?: BodyInit, si
   const headers = new Headers({
     authorization: 'Bearer test-key',
     'x-aipic-access-token': 'test-access',
-    'x-aipic-upstream': 'https://api.openai.com/v1',
+    'x-aipic-upstream': 'https://www.chream.me',
     'x-aipic-proxy-stream': options.stream ?? '1',
   })
   if (options.timeout) headers.set('x-aipic-timeout-seconds', options.timeout)
@@ -73,7 +73,7 @@ describe('long image request proxy transport', () => {
     expect(await reader.read()).toEqual({ done: true, value: undefined })
     expect(vi.getTimerCount()).toBe(0)
     const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit]
-    expect(url.href).toBe('https://api.openai.com/v1/images/generations')
+    expect(url.href).toBe('https://www.chream.me/v1/images/generations')
     expect(new Headers(init.headers).get('authorization')).toBe('Bearer test-key')
     for (const name of ['x-aipic-proxy-stream', 'x-aipic-timeout-seconds', 'x-aipic-upstream']) {
       expect(new Headers(init.headers).has(name)).toBe(false)

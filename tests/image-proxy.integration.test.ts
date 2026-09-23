@@ -19,7 +19,7 @@ function connectProxy(upstream: (init: RequestInit) => Promise<Response>) {
       request.headers.set('x-aipic-access-token', 'test-access')
       return onRequest({ request, env: proxyEnv() } as never)
     }
-    expect(String(input)).toMatch(/^https:\/\/api.openai.com\/v1\//)
+    expect(String(input)).toMatch(/^https:\/\/www.chream.me\/v1\//)
     upstreamCalls.push(init!)
     return upstream(init!)
   })

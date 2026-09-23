@@ -29,7 +29,7 @@ import { stripExportSecrets } from './services/export-security'
 import { cacheImage, cacheThumbnail, ensureImageCached, imageCache, scheduleThumbnailBackfill, thumbnailBackfillIds, thumbnailBackfillRunningIds, thumbnailCache, thumbnailSubscribers } from './services/image-cache'
 import type { AgentInputDraft } from './services/input-drafts'
 import { cleanStaleAgentInputDrafts, getPersistableAgentInputDrafts, getPersistableGalleryInputDraft, getPersistableInputImage, isEmptyAgentInputDraft, isRecord, normalizeAgentInputDraft, normalizeAgentInputDrafts, normalizeAgentInputDraftsByKey, restoreAgentInputDraftState, restoreGalleryInputDraftState, saveActiveAgentInputDrafts, saveGalleryInputDraft } from './services/input-drafts'
-import { createSettingsForApiProfile, getTaskApiProfile, getTaskApiProfileName, markInterruptedOpenAIRunningTasks, scheduleBackendRecovery, scheduleCustomRecovery, scheduleFalRecovery, submitTask } from './services/task-execution'
+import { createSettingsForApiProfile, getTaskApiProfile, getTaskApiProfileName, markInterruptedOpenAIRunningTasks, scheduleBackendRecovery, scheduleCustomRecovery, submitTask } from './services/task-execution'
 import { createAgentSlice } from './stores/agentStore'
 import { createEditorSlice } from './stores/editorStore'
 import { createHistorySlice } from './stores/historyStore'
@@ -784,14 +784,6 @@ export async function initStore() {
     .map((task) => putTask(task)))
   useStore.getState().setTasks(tasks)
   for (const task of tasks) {
-    if (
-      task.apiProvider === 'fal' &&
-      task.falRequestId &&
-      task.falEndpoint &&
-      (task.status === 'running' || task.falRecoverable)
-    ) {
-      scheduleFalRecovery(task.id, 0)
-    }
     if (
       task.customTaskId &&
       (task.status === 'running' || task.customRecoverable)

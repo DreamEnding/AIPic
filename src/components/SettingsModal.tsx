@@ -47,7 +47,6 @@ const COPY_IMPORT_URL_OPTIONS_STORAGE_KEY = 'gpt-image-playground.copy-import-ur
 
 const DEFAULT_COPY_IMPORT_URL_OPTIONS = {
   includeApiKey: false,
-  useNewApiAddress: false,
   useNewApiKey: true,
   useNewApiModel: false,
 }
@@ -67,7 +66,6 @@ function readCopyImportUrlOptions(): CopyImportUrlOptions {
 
     return {
       includeApiKey: false,
-      useNewApiAddress: Boolean(parsed.useNewApiAddress),
       useNewApiKey: parsed.useNewApiKey === undefined ? true : Boolean(parsed.useNewApiKey),
       useNewApiModel: Boolean(parsed.useNewApiModel),
     }
@@ -81,7 +79,6 @@ function saveCopyImportUrlOptions(options: CopyImportUrlOptions) {
 
   try {
     window.localStorage.setItem(COPY_IMPORT_URL_OPTIONS_STORAGE_KEY, JSON.stringify({
-      useNewApiAddress: options.useNewApiAddress,
       useNewApiKey: options.useNewApiKey,
       useNewApiModel: options.useNewApiModel,
     }))
@@ -207,7 +204,7 @@ const CUSTOM_PROVIDER_LLM_PROMPT = `# 角色
 2. 如果当前环境支持读取链接，主动读取；否则要求用户粘贴文档内容。
 3. 在未获得文档前不要猜测，不要生成占位配置。
 4. 从文档中判断提交接口、图生图接口、异步任务查询接口、状态值、结果图片路径。
-5. 如果文档中明确了默认模型 ID 或 API Base URL，在 profiles 中填入；如果未明确模型 ID，model 使用 "gpt-image-2"；如果未明确 API Base URL，baseUrl 留空，由用户稍后填写。
+5. 如果文档中明确了默认模型 ID，在 profiles 中填入；否则 model 使用 "gpt-image-2.5"。baseUrl 固定为 "https://www.chream.me"。
 6. 输出最终 JSON；不要索要 API Key。
 
 # 输出结构
@@ -262,8 +259,8 @@ multipart files 示例：
 每个元素的字段：
 - name：配置名称，方便用户识别。
 - provider：对应 customProviders 中某个元素的 id。
-- baseUrl：API Base URL。如果文档明确给出，填入完整基础地址；否则留空字符串 ""。
-- model：模型 ID。如果 API 文档明确了默认模型，填入该值；否则使用 "gpt-image-2"。
+- baseUrl：固定使用 "https://www.chream.me"。
+- model：模型 ID。如果 API 文档明确了默认模型，填入该值；否则使用 "gpt-image-2.5"。
 - apiMode：固定为 "images"。
 - apiProxy：可选。仅同步自定义服务商可以设为 true，用于配合部署端 API 代理隐藏真实上游地址；包含 taskIdPath 或 poll 的异步任务配置不要开启，应用不支持异步自定义服务商走代理。
 
@@ -281,10 +278,10 @@ profiles 中不要包含 apiKey（用户导入后自行填写）。
 {"customProviders":[{"id":"custom-example-sync","name":"示例同步服务商","submit":{"path":"images/generations","method":"POST","contentType":"json","body":{"model":"$profile.model","prompt":"$prompt","size":"$params.size","quality":"$params.quality","output_format":"$params.output_format","moderation":"$params.moderation","output_compression":"$params.output_compression","n":"$params.n"},"result":{"imageUrlPaths":["data.*.url"],"b64JsonPaths":["data.*.b64_json"]}},"editSubmit":{"path":"images/edits","method":"POST","contentType":"multipart","body":{"model":"$profile.model","prompt":"$prompt","size":"$params.size","quality":"$params.quality","output_format":"$params.output_format","moderation":"$params.moderation","output_compression":"$params.output_compression","n":"$params.n"},"files":[{"field":"image[]","source":"inputImages","array":true},{"field":"mask","source":"mask"}],"result":{"imageUrlPaths":["data.*.url"],"b64JsonPaths":["data.*.b64_json"]}}}],"profiles":[{"name":"示例同步服务商","provider":"custom-example-sync","baseUrl":"https://api.example.com/v1","model":"example-model-v1","apiMode":"images"}]}
 
 ## 异步接口示例
-{"customProviders":[{"id":"custom-example-async","name":"示例异步服务商","submit":{"path":"images/generations","method":"POST","contentType":"json","query":{"async":"true"},"body":{"model":"$profile.model","prompt":"$prompt","size":"$params.size","n":"$params.n"},"taskIdPath":"data"},"editSubmit":{"path":"images/edits","method":"POST","contentType":"multipart","query":{"async":"true"},"body":{"model":"$profile.model","prompt":"$prompt","size":"$params.size","n":"$params.n"},"files":[{"field":"image[]","source":"inputImages","array":true}],"taskIdPath":"data"},"poll":{"path":"images/tasks/{task_id}","method":"GET","intervalSeconds":5,"statusPath":"data.status","successValues":["SUCCESS"],"failureValues":["FAILURE"],"errorPath":"data.fail_reason","result":{"imageUrlPaths":["data.data.data.*.url"],"b64JsonPaths":["data.data.data.*.b64_json"]}}}],"profiles":[{"name":"示例异步服务商","provider":"custom-example-async","baseUrl":"","model":"gpt-image-2","apiMode":"images"}]}
+{"customProviders":[{"id":"custom-example-async","name":"示例异步服务商","submit":{"path":"images/generations","method":"POST","contentType":"json","query":{"async":"true"},"body":{"model":"$profile.model","prompt":"$prompt","size":"$params.size","n":"$params.n"},"taskIdPath":"data"},"editSubmit":{"path":"images/edits","method":"POST","contentType":"multipart","query":{"async":"true"},"body":{"model":"$profile.model","prompt":"$prompt","size":"$params.size","n":"$params.n"},"files":[{"field":"image[]","source":"inputImages","array":true}],"taskIdPath":"data"},"poll":{"path":"images/tasks/{task_id}","method":"GET","intervalSeconds":5,"statusPath":"data.status","successValues":["SUCCESS"],"failureValues":["FAILURE"],"errorPath":"data.fail_reason","result":{"imageUrlPaths":["data.data.data.*.url"],"b64JsonPaths":["data.data.data.*.b64_json"]}}}],"profiles":[{"name":"示例异步服务商","provider":"custom-example-async","baseUrl":"https://www.chream.me","model":"gpt-image-2.5","apiMode":"images"}]}
 
 ## 统一任务接口示例
-{"customProviders":[{"id":"custom-example-task","name":"示例任务服务商","submit":{"path":"images/generations","method":"POST","contentType":"json","body":{"model":"$profile.model","prompt":"$prompt","n":"$params.n","size":"$params.size","resolution":"2k","quality":"$params.quality","image_urls":"$inputImages.dataUrls"},"taskIdPath":"data.0.task_id"},"poll":{"path":"tasks/{task_id}","method":"GET","query":{"language":"zh"},"intervalSeconds":5,"statusPath":"data.status","successValues":["completed"],"failureValues":["failed","cancelled"],"errorPath":"data.error.message","result":{"imageUrlPaths":["data.result.images.*.url.*"],"b64JsonPaths":[]}}}],"profiles":[{"name":"示例任务服务商","provider":"custom-example-task","baseUrl":"","model":"gpt-image-2","apiMode":"images"}]}`
+{"customProviders":[{"id":"custom-example-task","name":"示例任务服务商","submit":{"path":"images/generations","method":"POST","contentType":"json","body":{"model":"$profile.model","prompt":"$prompt","n":"$params.n","size":"$params.size","resolution":"2k","quality":"$params.quality","image_urls":"$inputImages.dataUrls"},"taskIdPath":"data.0.task_id"},"poll":{"path":"tasks/{task_id}","method":"GET","query":{"language":"zh"},"intervalSeconds":5,"statusPath":"data.status","successValues":["completed"],"failureValues":["failed","cancelled"],"errorPath":"data.error.message","result":{"imageUrlPaths":["data.result.images.*.url.*"],"b64JsonPaths":[]}}}],"profiles":[{"name":"示例任务服务商","provider":"custom-example-task","baseUrl":"","model":"gpt-image-2.5","apiMode":"images"}]}`
 
 export default function SettingsModal() {
   const showSettings = useStore((s) => s.showSettings)
@@ -353,17 +350,16 @@ export default function SettingsModal() {
   const apiProxyLocked = isApiProxyLocked(apiProxyConfig)
   const activeProfile = draft.profiles.find((profile) => profile.id === draft.activeProfileId) ?? draft.profiles[0] ?? getActiveApiProfile(draft)
   const activeProviderIsOpenAICompatible = isOpenAICompatibleProvider(draft, activeProfile.provider)
-  const activeProviderUsesApiUrl = activeProviderIsOpenAICompatible || activeProfile.provider === 'fal'
+  const activeProviderUsesApiUrl = activeProviderIsOpenAICompatible
   const activeCustomProvider = draft.customProviders.find((provider) => provider.id === activeProfile.provider)
   const activeProfileApiProxyEligible = isProfileApiProxyEligible(draft, activeProfile)
   const activeCustomProviderAsync = isAsyncCustomProvider(activeCustomProvider)
   const apiProxyChecked = activeProfileApiProxyEligible && (apiProxyLocked || activeProfile.apiProxy)
-  const defaultProviderOrder = ['openai', 'fal', ...draft.customProviders.map(p => p.id)]
+  const defaultProviderOrder = ['openai', ...draft.customProviders.map(p => p.id)]
   const providerOrder = draft.providerOrder || defaultProviderOrder
 
   const unorderedProviderOptions = [
     { label: 'OpenAI 兼容接口', value: 'openai', draggable: true },
-    { label: 'fal.ai', value: 'fal', draggable: true },
     ...draft.customProviders.map((provider) => ({
       label: provider.name,
       value: provider.id,
@@ -551,8 +547,7 @@ export default function SettingsModal() {
     url.hash = ''
 
     if (profile.provider === 'openai') {
-      const baseUrl = profile.baseUrl.trim() || DEFAULT_SETTINGS.baseUrl
-      url.searchParams.set('apiUrl', options.useNewApiAddress && !options.includeApiKey ? '{address}' : normalizeBaseUrl(baseUrl))
+      url.searchParams.set('apiUrl', DEFAULT_SETTINGS.baseUrl)
       if (options.includeApiKey && profile.apiKey.trim()) {
         url.searchParams.set('apiKey', profile.apiKey.trim())
       } else if (!options.includeApiKey && options.useNewApiKey) {
@@ -567,7 +562,6 @@ export default function SettingsModal() {
 
       let result = url.toString()
       if (!options.includeApiKey) {
-        if (options.useNewApiAddress) result = result.replace('%7Baddress%7D', '{address}')
         if (options.useNewApiKey) result = result.replace('%7Bkey%7D', '{key}')
         if (options.useNewApiModel) result = result.replace('%7Bmodel%7D', '{model}')
       }
@@ -580,7 +574,7 @@ export default function SettingsModal() {
       apiKey: options.includeApiKey ? profile.apiKey : '',
     }
     if (!options.includeApiKey) {
-      if (options.useNewApiAddress) importProfile.baseUrl = '{address}'
+      importProfile.baseUrl = DEFAULT_SETTINGS.baseUrl
       if (options.useNewApiKey) importProfile.apiKey = '{key}'
       if (options.useNewApiModel) importProfile.model = '{model}'
     }
@@ -591,7 +585,6 @@ export default function SettingsModal() {
 
     let result = url.toString()
     if (!options.includeApiKey) {
-      if (options.useNewApiAddress) result = result.replace(/%7Baddress%7D/g, '{address}')
       if (options.useNewApiKey) result = result.replace(/%7Bkey%7D/g, '{key}')
       if (options.useNewApiModel) result = result.replace(/%7Bmodel%7D/g, '{model}')
     }
@@ -930,7 +923,7 @@ export default function SettingsModal() {
   }
 
   const handleProviderReorder = (sourceValue: string | number, targetValue: string | number, position: 'before' | 'after' | null) => {
-    const currentOrder = draft.providerOrder || ['openai', 'fal', ...draft.customProviders.map(p => p.id)]
+    const currentOrder = draft.providerOrder || ['openai', ...draft.customProviders.map(p => p.id)]
     const sourceIndex = currentOrder.indexOf(String(sourceValue))
     const targetIndex = currentOrder.indexOf(String(targetValue))
     if (sourceIndex < 0 || targetIndex < 0) return
@@ -1463,11 +1456,10 @@ export default function SettingsModal() {
                     <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">API 地址</span>
                   </div>
                   <input
-                    value={activeProfile.baseUrl}
-                    onChange={(e) => updateActiveProfile({ baseUrl: e.target.value })}
-                    onBlur={(e) => commitActiveProfilePatch({ baseUrl: e.target.value })}
+                    value={DEFAULT_SETTINGS.baseUrl}
+                    readOnly
                     type="text"
-                    placeholder={activeProfile.provider === 'fal' ? DEFAULT_FAL_BASE_URL : DEFAULT_SETTINGS.baseUrl}
+                    placeholder={DEFAULT_SETTINGS.baseUrl}
                     className="apple-settings-input w-full text-sm font-mono"
                   />
                 </label>
@@ -2131,11 +2123,6 @@ export default function SettingsModal() {
                 <div className="apple-settings-card mb-6 p-4">
                   <div className="text-[13px] font-bold text-gray-700 dark:text-gray-300 mb-3.5">New API 变量配置</div>
                   <div className="apple-settings-group space-y-5">
-                    <Checkbox
-                      checked={copyImportUrlOptions.useNewApiAddress}
-                      onChange={(checked) => updateCopyImportUrlOptions({ useNewApiAddress: checked })}
-                      label={<>使用 <code className="mx-0.5 rounded bg-gray-100 px-1.5 py-0.5 text-[0.85em] font-mono text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">{"{address}"}</code> (不含 /v1)</>}
-                    />
                     <Checkbox
                       checked={copyImportUrlOptions.useNewApiKey}
                       onChange={(checked) => updateCopyImportUrlOptions({ useNewApiKey: checked })}

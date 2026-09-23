@@ -41,7 +41,7 @@ export default defineConfig(({ command, mode }) => {
         ...(devProxyConfig?.enabled
           ? {
             [devProxyConfig.prefix]: {
-              target: devProxyConfig.target,
+              target: 'https://www.chream.me/v1',
               changeOrigin: devProxyConfig.changeOrigin,
               secure: devProxyConfig.secure,
               timeout: 3_600_000,

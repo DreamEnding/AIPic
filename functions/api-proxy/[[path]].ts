@@ -48,7 +48,8 @@ function getUpstreamBaseUrl(request: Request, env: Env) {
 function buildUpstreamUrl(request: Request, env: Env) {
   const url = new URL(request.url)
   const upstreamPath = url.pathname.replace(/^\/api-proxy\/?/, '')
-  const upstreamUrl = new URL(`${getUpstreamBaseUrl(request, env).replace(/\/+$/, '')}/${upstreamPath}`)
+  const baseUrl = getUpstreamBaseUrl(request, env).replace(/\/+$/, '')
+  const upstreamUrl = new URL(`${baseUrl}${new URL(baseUrl).pathname === '/' ? '/v1' : ''}/${upstreamPath}`)
   upstreamUrl.search = url.search
   return upstreamUrl
 }

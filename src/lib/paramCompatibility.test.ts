@@ -16,7 +16,7 @@ describe('parameter compatibility', () => {
     expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, n: 12 }, settings).n).toBe(10)
   })
 
-  it('limits fal.ai output count to 4', () => {
+  it('uses the OpenAI limit for removed fal.ai profiles', () => {
     const falProfile = createDefaultFalProfile({ apiKey: 'fal-key' })
     const settings = normalizeSettings({
       ...DEFAULT_SETTINGS,
@@ -24,8 +24,8 @@ describe('parameter compatibility', () => {
       activeProfileId: falProfile.id,
     })
 
-    expect(getOutputImageLimitForSettings(settings)).toBe(4)
-    expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, n: 8 }, settings).n).toBe(4)
+    expect(getOutputImageLimitForSettings(settings)).toBe(10)
+    expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, n: 8 }, settings).n).toBe(8)
   })
 
   it('keeps OpenAI streaming output count so the request can disable streaming', () => {
@@ -39,7 +39,7 @@ describe('parameter compatibility', () => {
     expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, n: 4 }, settings).n).toBe(4)
   })
 
-  it('only replaces fal.ai auto size in text-to-image mode', () => {
+  it('does not apply fal.ai size rules to removed profiles', () => {
     const falProfile = createDefaultFalProfile({ apiKey: 'fal-key' })
     const settings = normalizeSettings({
       ...DEFAULT_SETTINGS,
@@ -47,7 +47,7 @@ describe('parameter compatibility', () => {
       activeProfileId: falProfile.id,
     })
 
-    expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, size: 'auto' }, settings).size).toBe('1360x1024')
+    expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, size: 'auto' }, settings).size).toBe('auto')
     expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, size: 'auto' }, settings, { hasInputImages: true }).size).toBe('auto')
   })
 })

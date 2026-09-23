@@ -49,8 +49,8 @@ test('real Node HTTP boundary, readiness, body limits, rate limit and restart re
     });
     const payload = { apiKey: 'provider-test', baseUrl: 'https://127.0.0.1', protocol: 'openai', mode: 'text-to-image', prompt: 'test', model: 'test', parallelCount: 1, outputSize: '1K', aspectRatio: '1:1', images: [] };
     assert.equal((await request('/api/flyreq/tasks', { method: 'POST', headers, body: JSON.stringify(payload) })).status, 403);
-    assert.equal((await request('/api/flyreq/tasks', { method: 'POST', headers, body: JSON.stringify({ ...payload, baseUrl: 'https://api.openai.com/v1', images: Array(9).fill({ data: 'AA==', mimeType: 'image/png' }) }) })).status, 413);
-    assert.equal((await request('/api/flyreq/tasks/batch', { method: 'POST', headers, body: JSON.stringify({ ...payload, baseUrl: 'https://api.openai.com/v1', parallelCount: 5 }) })).status, 400);
+    assert.equal((await request('/api/flyreq/tasks', { method: 'POST', headers, body: JSON.stringify({ ...payload, baseUrl: 'https://www.chream.me', images: Array(9).fill({ data: 'AA==', mimeType: 'image/png' }) }) })).status, 413);
+    assert.equal((await request('/api/flyreq/tasks/batch', { method: 'POST', headers, body: JSON.stringify({ ...payload, baseUrl: 'https://www.chream.me', parallelCount: 5 }) })).status, 400);
     assert.equal((await request('/api/flyreq/tasks', { method: 'POST', headers, body: ' '.repeat(24 * 1024 * 1024 + 1) })).status, 413);
     let uploaded = 0;
     const chunked = new ReadableStream({ pull(controller) {

@@ -1,6 +1,6 @@
 services:
   aipic:
-    image: "${AIPIC_IMAGE:-aipic:0.4.10}"
+    image: "${AIPIC_IMAGE:-aipic:0.4.11}"
     build:
       context: .
       dockerfile: deploy/Dockerfile
@@ -17,8 +17,8 @@ services:
     environment:
       AIPIC_ACCESS_TOKEN: "${AIPIC_ACCESS_TOKEN:?Set an application access token}"
       AIPIC_PROVIDERS: '${AIPIC_PROVIDERS:-{}}'
-      DEFAULT_API_URL: "${DEFAULT_API_URL:-https://api.openai.com/v1}"
-      API_PROXY_URL: "${API_PROXY_URL:-https://api.openai.com/v1}"
+      DEFAULT_API_URL: "${DEFAULT_API_URL:-https://www.chream.me}"
+      API_PROXY_URL: "${API_PROXY_URL:-https://www.chream.me}"
       ENABLE_API_PROXY: "${ENABLE_API_PROXY:-true}"
       LOCK_API_PROXY: "${LOCK_API_PROXY:-true}"
       FLYREQ_TASK_CONCURRENCY: "${FLYREQ_TASK_CONCURRENCY:-4}"

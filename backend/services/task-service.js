@@ -91,13 +91,13 @@ const DEFAULT_PLATFORM_BRANDING = {
   platformVersion: process.env.APP_VERSION || require(path.join(BACKEND_DIR, '..', 'package.json')).version || '0.0.0',
 };
 const DEFAULT_IMAGE_MODEL_DEPLOYMENT_CONFIG = {
-  id: 'flyreq-gpt-image-2',
+  id: 'flyreq-gpt-image-2.5',
   protocol: 'openai',
   name: 'OpenAI',
   modelId: '',
   usesPresetModelId: true,
-  baseUrl: 'https://api.openai.com/v1',
-  builtinPreset: 'gpt-image-2',
+  baseUrl: 'https://www.chream.me',
+  builtinPreset: 'gpt-image-2.5',
   maxRefImages: 16,
   maxOutputSize: '4K',
   supportsAdvancedParams: true,
@@ -109,7 +109,7 @@ const DEFAULT_VIDEO_MODEL_DEPLOYMENT_CONFIG = {
   protocol: 'openai',
   name: 'OpenAI',
   modelId: 'sora-2',
-  baseUrl: 'https://api.openai.com/v1',
+  baseUrl: 'https://www.chream.me',
 };
 const DEFAULT_VIDEO_WORKSPACE_CONFIG = {
   maxRefImages: 9,
@@ -124,7 +124,7 @@ const DEFAULT_VIDEO_WORKSPACE_CONFIG = {
 };
 const BUILTIN_IMAGE_PRESET_IDS = new Set([
   'gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'gemini-3.1-flash-image-preview',
-  'gemini-3.1-flash-lite-image', 'gpt-image-2', 'grok-imagine-image', 'grok-imagine-image-quality',
+  'gemini-3.1-flash-lite-image', 'gpt-image-2', 'gpt-image-2.5', 'grok-imagine-image', 'grok-imagine-image-quality',
 ]);
 const DEFAULT_OUTBOUND_USER_AGENT = 'FlyReq-Image-Studio/1.5.1';
 
@@ -245,7 +245,7 @@ function appendProtocolApiPath(protocol, baseUrl, apiPath) {
 }
 
 function resolveFlyreqApiBaseUrl() {
-  return normalizeBaseUrl(getRuntimeEnv().FLYREQ_API_BASE_URL) || 'https://api.openai.com';
+  return normalizeBaseUrl(getRuntimeEnv().FLYREQ_API_BASE_URL) || 'https://www.chream.me';
 }
 
 /**
@@ -598,10 +598,10 @@ function resolveDefaultImageModelConfig(env = getRuntimeEnv()) {
   const isXaiImagine = builtinPreset === 'grok-imagine-image' || builtinPreset === 'grok-imagine-image-quality';
   const configuredModelId = String(env.FLYREQ_DEFAULT_IMAGE_MODEL_MODEL_ID || '').trim().slice(0, 200);
   const usesPresetModelId = !configuredModelId;
-  const supportsAdvancedParams = protocol === 'openai' && builtinPreset === 'gpt-image-2'
+  const supportsAdvancedParams = protocol === 'openai' && (builtinPreset === 'gpt-image-2' || builtinPreset === 'gpt-image-2.5')
     ? parseBooleanEnv(env.FLYREQ_DEFAULT_IMAGE_MODEL_SUPPORTS_ADVANCED_PARAMS, DEFAULT_IMAGE_MODEL_DEPLOYMENT_CONFIG.supportsAdvancedParams)
     : false;
-  const streamImages = protocol === 'openai' && builtinPreset === 'gpt-image-2'
+  const streamImages = protocol === 'openai' && (builtinPreset === 'gpt-image-2' || builtinPreset === 'gpt-image-2.5')
     ? parseBooleanEnv(env.FLYREQ_DEFAULT_IMAGE_MODEL_STREAM_IMAGES, DEFAULT_IMAGE_MODEL_DEPLOYMENT_CONFIG.streamImages)
     : false;
   return {

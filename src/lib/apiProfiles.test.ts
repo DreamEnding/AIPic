@@ -9,6 +9,7 @@ import {
   createDefaultGrokProfile,
   createDefaultOpenAIProfile,
   createDefaultFalProfile,
+  getActiveApiProfile,
   findEquivalentApiProfile,
   importCustomProviderDefinitionFromJson,
   importCustomProviderSettingsFromJson,
@@ -20,6 +21,36 @@ import {
 
 afterEach(() => {
   vi.unstubAllEnvs()
+})
+
+describe('fixed API endpoint', () => {
+  it('uses the fixed address and recommended model by default', () => {
+    expect(DEFAULT_SETTINGS.baseUrl).toBe('https://www.chream.me')
+    expect(DEFAULT_IMAGES_MODEL).toBe('gpt-image-2.5')
+  })
+
+  it('ignores an old saved API address for active OpenAI-compatible requests', () => {
+    const settings = normalizeSettings({
+      baseUrl: 'https://old.example.com/v1',
+      profiles: [createDefaultOpenAIProfile({ baseUrl: 'https://old.example.com/v1' })],
+    })
+    expect(getActiveApiProfile(settings).baseUrl).toBe('https://www.chream.me')
+  })
+
+  it('drops old fal.ai profiles when loading saved settings', () => {
+    const saved = {
+      apiKey: 'old-fal-key',
+      model: 'openai/gpt-image-2',
+      profiles: [createDefaultFalProfile({ id: 'old-fal' })],
+      activeProfileId: 'old-fal',
+    }
+    const settings = normalizeSettings(saved)
+    expect(settings.profiles).toHaveLength(1)
+    expect(settings.profiles[0].provider).toBe('openai')
+    expect(settings.profiles[0].apiKey).toBe('')
+    expect(settings.profiles[0].model).toBe('gpt-image-2.5')
+    expect(getActiveApiProfile(saved).apiKey).toBe('')
+  })
 })
 
 describe('createDefaultGrokProfile', () => {
@@ -114,8 +145,8 @@ describe('mergeImportedSettings', () => {
       activeProfileId: 'imported-fal',
     })
 
-    expect(merged.profiles.map((profile) => profile.id)).toEqual(['imported-openai', 'imported-fal'])
-    expect(merged.activeProfileId).toBe('imported-fal')
+    expect(merged.profiles.map((profile) => profile.id)).toEqual(['imported-openai'])
+    expect(merged.activeProfileId).toBe('imported-openai')
   })
 
   it('deduplicates imported profiles when replacing untouched default settings', () => {
@@ -214,12 +245,11 @@ describe('mergeImportedSettings', () => {
       activeProfileId: 'imported-fal',
     })
 
-    expect(merged.profiles).toHaveLength(3)
+    expect(merged.profiles).toHaveLength(2)
     expect(merged.activeProfileId).toBe(DEFAULT_OPENAI_PROFILE_ID)
     expect(merged.profiles[0]).toMatchObject({ apiKey: 'current-key', model: 'current-model' })
     expect(merged.profiles[1]).toMatchObject({ name: 'Imported OpenAI', provider: 'openai', apiKey: 'imported-key' })
-    expect(merged.profiles[2]).toMatchObject({ name: 'Imported fal', provider: 'fal', apiKey: 'fal-key' })
-    expect(new Set(merged.profiles.map((profile) => profile.id)).size).toBe(3)
+    expect(new Set(merged.profiles.map((profile) => profile.id)).size).toBe(2)
   })
 
   it('skips imported profiles that already exist in current customized settings', () => {
@@ -257,9 +287,8 @@ describe('mergeImportedSettings', () => {
       ],
     })
 
-    expect(merged.profiles).toHaveLength(2)
+    expect(merged.profiles).toHaveLength(1)
     expect(merged.profiles[0]).toMatchObject({ apiKey: 'current-key', model: 'current-model' })
-    expect(merged.profiles[1]).toMatchObject({ provider: 'fal', apiKey: 'fal-key', model: DEFAULT_FAL_MODEL })
   })
 
   it('reuses an existing keyed profile when importing the same custom profile without an API key', () => {

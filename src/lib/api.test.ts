@@ -524,7 +524,7 @@ describe('callImageApi', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
-          'x-aipic-upstream': 'http://api.example.com/v1',
+          'x-aipic-upstream': 'https://www.chream.me',
         }),
       }),
     )
@@ -643,8 +643,8 @@ describe('callImageApi', () => {
       '/api-proxy/images/generations',
       expect.objectContaining({
         method: 'POST',
-        headers: expect.not.objectContaining({
-          'x-aipic-upstream': expect.any(String),
+        headers: expect.objectContaining({
+          'x-aipic-upstream': 'https://www.chream.me',
         }),
       }),
     )
@@ -821,7 +821,7 @@ describe('callImageApi', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://api.example.com/v1/images/generations',
+      'https://www.chream.me/v1/images/generations',
       expect.objectContaining({ method: 'POST' }),
     )
   })
@@ -896,7 +896,7 @@ describe('callImageApi', () => {
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     expect(onCustomTaskEnqueued).toHaveBeenCalledWith({ taskId: 'task-1' })
-    expect(fetchMock.mock.calls[1][0]).toBe('https://api.example.com/v1/images/tasks/task-1')
+    expect(fetchMock.mock.calls[1][0]).toBe('https://www.chream.me/v1/images/tasks/task-1')
     await vi.advanceTimersByTimeAsync(1000)
 
     await expect(promise).resolves.toEqual({

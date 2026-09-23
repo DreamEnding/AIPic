@@ -4,7 +4,6 @@ import { validateMaskMatchesImage } from '../lib/canvasImage'
 import {
 storeImage
 } from '../lib/db'
-import { getFalErrorMessage, getFalQueuedImageResult } from '../lib/falAiImageApi'
 import { getFlyreqQueuedImageResult, isFlyreqTaskRecoverableError } from '../lib/flyreqImageApi'
 import { IMAGE_FETCH_CORS_HINT } from '../lib/imageApiShared'
 import { getImageRequestTimeoutSeconds } from '../lib/imageRequestTimeout'
@@ -24,13 +23,9 @@ TaskParams,
 TaskRecord
 } from '../types'
 
-const FAL_RECOVERY_POLL_MS = 10_000
-
 const CUSTOM_RECOVERY_POLL_MS = 10_000
 
 const BACKEND_RECOVERY_POLL_MS = 10_000
-
-const falRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 const customRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -80,12 +75,6 @@ export function markInterruptedOpenAIRunningTasks(tasks: TaskRecord[], now = Dat
   })
 
   return { tasks: updatedTasks, interruptedTasks }
-}
-
-function getFalRecoveryProfile(settings: AppSettings, task: TaskRecord) {
-  const taskProfile = getTaskApiProfile(settings, task)
-  if (taskProfile?.provider === 'fal') return taskProfile
-  return null
 }
 
 function getCustomRecoveryProfile(settings: AppSettings, task: TaskRecord) {
@@ -213,21 +202,6 @@ function getRawErrorPayload(err: unknown): Pick<Partial<TaskRecord>, 'rawImageUr
   }
 }
 
-function clearFalRecoveryTimer(taskId: string) {
-  const timer = falRecoveryTimers.get(taskId)
-  if (timer) clearTimeout(timer)
-  falRecoveryTimers.delete(taskId)
-}
-
-export function scheduleFalRecovery(taskId: string, delayMs = FAL_RECOVERY_POLL_MS) {
-  if (falRecoveryTimers.has(taskId)) return
-  const timer = setTimeout(() => {
-    falRecoveryTimers.delete(taskId)
-    recoverFalTask(taskId)
-  }, delayMs)
-  falRecoveryTimers.set(taskId, timer)
-}
-
 function clearCustomRecoveryTimer(taskId: string) {
   const timer = customRecoveryTimers.get(taskId)
   if (timer) clearTimeout(timer)
@@ -314,66 +288,6 @@ async function resolveImageSizeParamsList(
   if (preferred?.length === images.length && preferred.every(hasActualParams)) return preferred
   const fallback = await readImageSizeParamsList(images)
   return images.map((_, index) => hasActualParams(preferred?.[index]) ? preferred?.[index] : fallback[index])
-}
-
-async function completeRecoveredFalTask(task: TaskRecord, result: Awaited<ReturnType<typeof getFalQueuedImageResult>>) {
-  const latest = useStore.getState().tasks.find((item) => item.id === task.id)
-  if (!latest || latest.status === 'done') return
-
-  const actualParamsList = await resolveImageSizeParamsList(result.images, result.actualParamsList)
-  const outputIds: string[] = []
-  for (const dataUrl of result.images) {
-    const imgId = await storeImage(dataUrl, 'generated')
-    cacheImage(imgId, dataUrl)
-    outputIds.push(imgId)
-  }
-
-  updateTaskInStore(task.id, {
-    outputImages: outputIds,
-    actualParams: firstActualParams(actualParamsList),
-    actualParamsByImage: mapActualParamsByImage(outputIds, actualParamsList),
-    revisedPromptByImage: undefined,
-    status: 'done',
-    error: null,
-    falRecoverable: false,
-    finishedAt: Date.now(),
-    elapsed: Date.now() - task.createdAt,
-  })
-  useStore.getState().showToast(`fal.ai 任务已恢复，共 ${outputIds.length} 张图片`, 'success')
-}
-
-async function recoverFalTask(taskId: string) {
-  const { settings, tasks } = useStore.getState()
-  const task = tasks.find((item) => item.id === taskId)
-  if (!task || task.apiProvider !== 'fal' || !task.falRequestId || !task.falEndpoint || task.status === 'done') return
-
-  const profile = getFalRecoveryProfile(settings, task)
-  if (!profile) {
-    scheduleFalRecovery(taskId)
-    return
-  }
-
-  try {
-    const result = await getFalQueuedImageResult(profile, task.falEndpoint, task.falRequestId, task.params)
-    clearFalRecoveryTimer(taskId)
-    await completeRecoveredFalTask(task, result)
-    return
-  } catch (err) {
-    if (isFalConnectionRecoverableError(err)) {
-      scheduleFalRecovery(taskId)
-      return
-    }
-
-    clearFalRecoveryTimer(taskId)
-    updateTaskInStore(taskId, {
-      status: 'error',
-      error: getFalErrorMessage(err) ?? (err instanceof Error ? err.message : String(err)),
-      ...getRawErrorPayload(err),
-      falRecoverable: false,
-      finishedAt: Date.now(),
-      elapsed: Date.now() - task.createdAt,
-    })
-  }
 }
 
 export async function submitTask(options: { allowFullMask?: boolean; useCurrentApiProfileWhenReusedMissing?: boolean; textToImage?: boolean } = {}) {
@@ -519,9 +433,6 @@ async function executeTask(taskId: string) {
   const activeProfile = taskProfile ?? getActiveApiProfile(settings)
   const requestSettings = createSettingsForApiProfile(settings, activeProfile)
   const taskProvider = task.apiProvider ?? activeProfile.provider
-  let falRequestInfo: { requestId: string; endpoint: string } | null = task.falRequestId && task.falEndpoint
-        ? { requestId: task.falRequestId, endpoint: task.falEndpoint }
-    : null
   let customTaskInfo: { taskId: string } | null = task.customTaskId
     ? { taskId: task.customTaskId }
     : null
@@ -552,14 +463,6 @@ async function executeTask(taskId: string) {
       params: task.params,
       inputImageDataUrls: inputDataUrls,
       maskDataUrl,
-      onFalRequestEnqueued: (request) => {
-        falRequestInfo = request
-        updateTaskInStore(taskId, {
-          falRequestId: request.requestId,
-          falEndpoint: request.endpoint,
-          falRecoverable: false,
-        })
-      },
       onCustomTaskEnqueued: (request) => {
         customTaskInfo = request
         updateTaskInStore(taskId, {
@@ -665,9 +568,6 @@ async function executeTask(taskId: string) {
     const latestTask = useStore.getState().tasks.find((t) => t.id === taskId) ?? task
     if (latestTask.status !== 'running') return
     useStore.getState().setTaskStreamPreview(taskId)
-    const latestFalRequestInfo = falRequestInfo ?? (latestTask.falRequestId && latestTask.falEndpoint
-      ? { requestId: latestTask.falRequestId, endpoint: latestTask.falEndpoint }
-      : null)
     const latestCustomTaskInfo = customTaskInfo ?? (latestTask.customTaskId ? { taskId: latestTask.customTaskId } : null)
     const latestBackendTaskInfo = backendTaskInfo ?? (latestTask.backendTaskId ? { taskId: latestTask.backendTaskId } : null)
     if (latestBackendTaskInfo && isFlyreqTaskRecoverableError(err)) {
@@ -681,17 +581,6 @@ async function executeTask(taskId: string) {
         elapsed: null,
       })
       scheduleBackendRecovery(taskId)
-    } else if (latestTask.apiProvider === 'fal' && latestFalRequestInfo && isFalConnectionRecoverableError(err)) {
-      updateTaskInStore(taskId, {
-        status: 'error',
-        error: '与 fal.ai 的连接已断开，之后会继续查询任务结果。',
-        falRequestId: latestFalRequestInfo.requestId,
-        falEndpoint: latestFalRequestInfo.endpoint,
-        falRecoverable: true,
-        finishedAt: Date.now(),
-        elapsed: Date.now() - task.createdAt,
-      })
-      scheduleFalRecovery(taskId)
     } else if (latestCustomTaskInfo && isFalConnectionRecoverableError(err)) {
       updateTaskInStore(taskId, {
         status: 'error',

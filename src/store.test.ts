@@ -1773,7 +1773,7 @@ describe('agent assistant regeneration', () => {
 
 describe('reused task API profile', () => {
   const openaiProfile = createDefaultOpenAIProfile({ id: 'openai-profile', apiKey: 'openai-key' })
-  const falProfile = createDefaultFalProfile({ id: 'fal-profile', name: 'fal 配置', apiKey: 'fal-key' })
+  const falProfile = createDefaultOpenAIProfile({ id: 'second-profile', name: '备用配置', apiKey: 'second-key' })
 
   beforeEach(() => {
     useStore.setState({
@@ -1799,14 +1799,14 @@ describe('reused task API profile', () => {
   })
 
   it('resolves a task API profile by stored profile id', () => {
-    const resolved = getTaskApiProfile(useStore.getState().settings, task({ apiProvider: 'fal', apiProfileId: falProfile.id }))
+    const resolved = getTaskApiProfile(useStore.getState().settings, task({ apiProvider: 'openai', apiProfileId: falProfile.id }))
 
     expect(resolved?.id).toBe(falProfile.id)
   })
 
   it('does not resolve a task API profile by stored name or model', () => {
     const resolved = getTaskApiProfile(useStore.getState().settings, task({
-      apiProvider: 'fal',
+      apiProvider: 'openai',
       apiProfileName: falProfile.name,
       apiModel: falProfile.model,
     }))
@@ -1816,7 +1816,7 @@ describe('reused task API profile', () => {
 
   it('reuses the task API profile temporarily without switching the active profile', async () => {
     await reuseConfig(task({
-      apiProvider: 'fal',
+      apiProvider: 'openai',
       apiProfileId: falProfile.id,
       params: { ...DEFAULT_PARAMS, n: 8, size: 'auto', quality: 'auto' },
     }))
@@ -1824,8 +1824,8 @@ describe('reused task API profile', () => {
     const state = useStore.getState()
     expect(state.settings.activeProfileId).toBe(openaiProfile.id)
     expect(state.reusedTaskApiProfileId).toBe(falProfile.id)
-    expect(state.params).toMatchObject({ n: 4, size: '1360x1024', quality: 'high' })
-    expect(state.showToast).toHaveBeenCalledWith('已临时复用该任务的 API 配置「fal 配置」', 'success')
+    expect(state.params).toMatchObject({ n: 8, size: 'auto', quality: 'auto' })
+    expect(state.showToast).toHaveBeenCalledWith('已临时复用该任务的 API 配置「备用配置」', 'success')
   })
 
   it('keeps selected image mentions when reusing a task with different current input images', async () => {
@@ -1855,7 +1855,7 @@ describe('reused task API profile', () => {
   })
 
   it('clears temporary reuse when switching current settings to the reused API profile', async () => {
-    await reuseConfig(task({ apiProvider: 'fal', apiProfileId: falProfile.id }))
+    await reuseConfig(task({ apiProvider: 'openai', apiProfileId: falProfile.id }))
 
     useStore.getState().setSettings({ activeProfileId: falProfile.id })
 

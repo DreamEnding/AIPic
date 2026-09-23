@@ -15,19 +15,13 @@ import type {
 } from '../types'
 import { DEFAULT_AGENT_MAX_TOOL_ROUNDS, DEFAULT_STREAM_PARTIAL_IMAGES } from '../types'
 import { isApiProxyAvailable, shouldUseApiProxy } from './devProxy'
-import { readRuntimeEnv } from './runtimeEnv'
 import { DEFAULT_IMAGE_TIMEOUT_SECONDS, normalizeImageTimeoutSeconds } from './imageRequestTimeout'
-import { isImportableConfigUrl } from './customProviderConfigUrl'
 
-const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
-const RAW_DEFAULT_API_URL = readRuntimeEnv(import.meta.env.VITE_DEFAULT_API_URL)
+export const FIXED_API_URL = 'https://www.chream.me'
 const DEFAULT_OPENAI_API_PROXY = isApiProxyAvailable()
-const DOCKER_DEPLOYMENT = readRuntimeEnv(import.meta.env.VITE_DOCKER_DEPLOYMENT) === 'true'
 const DEFAULT_OPENAI_STREAM_IMAGES = true
-const DEFAULT_BASE_URL = isImportableConfigUrl(RAW_DEFAULT_API_URL)
-  ? ''
-  : RAW_DEFAULT_API_URL || (DOCKER_DEPLOYMENT && DEFAULT_OPENAI_API_PROXY ? '' : OPENAI_DEFAULT_BASE_URL)
-export const DEFAULT_IMAGES_MODEL = 'gpt-image-2'
+const DEFAULT_BASE_URL = FIXED_API_URL
+export const DEFAULT_IMAGES_MODEL = 'gpt-image-2.5'
 export const DEFAULT_GROK_MODEL = 'grok-imagine-image'
 export const DEFAULT_RESPONSES_MODEL = 'gpt-5.5'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
@@ -486,9 +480,12 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     streamImages: typeof record.streamImages === 'boolean' ? record.streamImages : DEFAULT_OPENAI_STREAM_IMAGES,
     streamPartialImages: normalizeStreamPartialImages(record.streamPartialImages),
   })
-  const profiles = Array.isArray(record.profiles) && record.profiles.length
-    ? record.profiles.map((profile) => normalizeApiProfile(profile, undefined, customProviderIds))
-    : [legacyProfile]
+  const supportedProfiles = Array.isArray(record.profiles)
+    ? record.profiles.filter((profile) => !isRecord(profile) || profile.provider !== 'fal')
+    : []
+  const profiles = supportedProfiles.length
+    ? supportedProfiles.map((profile) => normalizeApiProfile(profile, undefined, customProviderIds))
+    : [Array.isArray(record.profiles) && record.profiles.length ? createDefaultOpenAIProfile() : legacyProfile]
   const activeProfileId = typeof record.activeProfileId === 'string' && profiles.some((p) => p.id === record.activeProfileId)
     ? record.activeProfileId
     : profiles[0].id
@@ -599,10 +596,13 @@ export function getActiveApiProfile(settings: Partial<AppSettings> | unknown): A
   const record = settings && typeof settings === 'object' ? settings as Record<string, unknown> : {}
   const normalized = normalizeSettings(settings)
   const profile = normalized.profiles.find((p) => p.id === normalized.activeProfileId) ?? normalized.profiles[0] ?? createDefaultOpenAIProfile()
+  const removedActiveProfile = Array.isArray(record.profiles) && record.profiles.some((item) =>
+    isRecord(item) && item.id === record.activeProfileId && item.provider === 'fal')
+  if (removedActiveProfile) return { ...profile, baseUrl: FIXED_API_URL }
 
   return {
     ...profile,
-    baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : profile.baseUrl,
+    baseUrl: FIXED_API_URL,
     apiKey: typeof record.apiKey === 'string' ? record.apiKey : profile.apiKey,
     model: typeof record.model === 'string' && record.model.trim() ? record.model : profile.model,
     timeout: normalizeImageTimeoutSeconds(record.timeout, profile.timeout),

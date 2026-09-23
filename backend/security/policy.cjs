@@ -3,7 +3,7 @@ const MAX_BODY_BYTES = 24 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 const MAX_REFERENCE_IMAGES = 8;
-const BUILTIN_PROVIDERS = Object.freeze({ openai: 'https://api.openai.com/v1', xai: 'https://api.x.ai/v1', grok: 'https://api.x.ai/v1', google: 'https://generativelanguage.googleapis.com/v1beta' });
+const BUILTIN_PROVIDERS = Object.freeze({ openai: 'https://www.chream.me', xai: 'https://api.x.ai/v1', grok: 'https://api.x.ai/v1', google: 'https://generativelanguage.googleapis.com/v1beta' });
 
 function fail(statusCode, message) {
   throw Object.assign(new Error(message), { statusCode, code: 'SECURITY_POLICY' });
